@@ -26,20 +26,18 @@
                 </span>
             </div>
 
-            <!-- Files List -->
-            <div v-if="gitStatus.files.length > 0" class="mb-3">
-                <h6>{{ $t('changedFiles') }}:</h6>
+            <!-- Unstaged Files List -->
+            <div v-if="unstagedFiles.length > 0" class="mb-3">
+                <h6>{{ $t('unstagedChanges') }}:</h6>
                 <div class="file-list">
-                    <div v-for="file in gitStatus.files" :key="file.path" class="file-item d-flex align-items-center mb-2">
+                    <div v-for="file in unstagedFiles" :key="file.path" class="file-item d-flex align-items-center mb-2">
                         <input
-                            v-if="!file.staged"
                             :id="'file-' + file.path"
                             v-model="selectedFiles"
                             type="checkbox"
                             :value="file.path"
                             class="form-check-input me-2"
                         />
-                        <span v-else class="me-2">✓</span>
                         <span :class="getFileStatusClass(file.status)" class="me-2">
                             {{ file.status }}
                         </span>
@@ -48,12 +46,32 @@
                 </div>
             </div>
 
-            <div v-else class="alert alert-info">
+            <!-- Staged Files List -->
+            <div v-if="stagedFiles.length > 0" class="mb-3">
+                <h6>{{ $t('stagedChanges') }}:</h6>
+                <div class="file-list staged-list">
+                    <div v-for="file in stagedFiles" :key="file.path" class="file-item d-flex align-items-center mb-2">
+                        <input
+                            :id="'staged-file-' + file.path"
+                            v-model="selectedStagedFiles"
+                            type="checkbox"
+                            :value="file.path"
+                            class="form-check-input me-2"
+                        />
+                        <span :class="getFileStatusClass(file.status)" class="me-2">
+                            {{ file.status }}
+                        </span>
+                        <span class="text-monospace">{{ file.path }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="gitStatus.files.length === 0" class="alert alert-info">
                 {{ $t('noChanges') }}
             </div>
 
             <!-- Commit Message -->
-            <div v-if="gitStatus.files.length > 0" class="mb-3">
+            <div v-if="stagedFiles.length > 0" class="mb-3">
                 <label for="commitMessage" class="form-label">{{ $t('commitMessage') }}</label>
                 <input
                     id="commitMessage"
@@ -104,6 +122,15 @@
             >
                 <font-awesome-icon icon="plus" class="me-1" />
                 {{ $t('addFiles') }}
+            </button>
+            <button
+                v-if="isGitRepo && selectedStagedFiles.length > 0"
+                class="btn btn-warning"
+                :disabled="processing"
+                @click="unstageFiles"
+            >
+                <font-awesome-icon icon="minus" class="me-1" />
+                {{ $t('unstageFiles') }}
             </button>
             <button
                 v-if="isGitRepo && gitStatus.files.some(f => f.staged)"
@@ -160,6 +187,7 @@ export default {
                 behind: 0,
             },
             selectedFiles: [],
+            selectedStagedFiles: [],
             commitMessage: "",
             showCredentialsDialog: false,
             credentials: {
@@ -167,6 +195,14 @@ export default {
                 password: "",
             },
         };
+    },
+    computed: {
+        unstagedFiles() {
+            return this.gitStatus.files.filter(f => !f.staged);
+        },
+        stagedFiles() {
+            return this.gitStatus.files.filter(f => f.staged);
+        },
     },
     methods: {
         async open() {
@@ -178,6 +214,7 @@ export default {
         onHide() {
             this.show = false;
             this.selectedFiles = [];
+            this.selectedStagedFiles = [];
             this.commitMessage = "";
             this.showCredentialsDialog = false;
             this.credentials = { username: "",
@@ -221,6 +258,22 @@ export default {
                 this.$root.toastRes(res);
                 if (res.ok) {
                     this.selectedFiles = [];
+                    this.loadGitStatus();
+                }
+            });
+        },
+
+        async unstageFiles() {
+            if (this.selectedStagedFiles.length === 0) {
+                return;
+            }
+
+            this.processing = true;
+            this.$root.emitAgent(this.endpoint, "gitUnstageFiles", this.stackName, this.selectedStagedFiles, (res) => {
+                this.processing = false;
+                this.$root.toastRes(res);
+                if (res.ok) {
+                    this.selectedStagedFiles = [];
                     this.loadGitStatus();
                 }
             });
@@ -297,6 +350,11 @@ export default {
     border: 1px solid #dee2e6;
     border-radius: 0.25rem;
     padding: 0.5rem;
+}
+
+.file-list.staged-list {
+    background-color: #f8f9fa;
+    border-color: #28a745;
 }
 
 .file-item {
