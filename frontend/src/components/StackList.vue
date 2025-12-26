@@ -131,12 +131,14 @@ export default {
 
             result = result.filter(stack => {
                 // filter by search text
-                // finds stack name, tag name or tag value
+                // finds stack name, tag name, tag value, or repo name
                 let searchTextMatch = true;
                 if (this.searchText !== "") {
                     const loweredSearchText = this.searchText.toLowerCase();
+                    const repoName = stack.repo || "local";
                     searchTextMatch =
                         stack.name.toLowerCase().includes(loweredSearchText)
+                        || repoName.toLowerCase().includes(loweredSearchText)
                         || stack.tags.find(tag => tag.name.toLowerCase().includes(loweredSearchText)
                             || tag.value?.toLowerCase().includes(loweredSearchText));
                 }
