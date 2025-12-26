@@ -203,30 +203,34 @@ export default {
          */
         groupedStackList() {
             const groups = {};
-            
+
             for (const stack of this.sortedStackList) {
-                const repoName = stack.repo || 'local';
-                
+                const repoName = stack.repo || "local";
+
                 if (!groups[repoName]) {
                     groups[repoName] = [];
                 }
-                
+
                 groups[repoName].push(stack);
             }
-            
+
             // Sort repo names, with "local" always first
             const sortedRepos = Object.keys(groups).sort((a, b) => {
-                if (a === 'local') return -1;
-                if (b === 'local') return 1;
+                if (a === "local") {
+                    return -1;
+                }
+                if (b === "local") {
+                    return 1;
+                }
                 return a.localeCompare(b);
             });
-            
+
             // Create sorted object
             const sortedGroups = {};
             for (const repoName of sortedRepos) {
                 sortedGroups[repoName] = groups[repoName];
             }
-            
+
             return sortedGroups;
         },
 
