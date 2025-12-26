@@ -86,6 +86,7 @@ export class Stack {
             isManagedByDockge: this.isManagedByDockge,
             composeFileName: this._composeFileName,
             endpoint,
+            repo: this.repo,
         };
     }
 
@@ -170,6 +171,20 @@ export class Stack {
             fullPathDir = dir;
         }
         return fullPathDir;
+    }
+
+    /**
+     * Get the repo name (parent folder) for this stack
+     * If the stack is in the root directory, return "local"
+     */
+    get repo() : string {
+        const parts = this.name.split(path.sep);
+        if (parts.length > 1) {
+            // Stack is in a subdirectory, return the parent folder name
+            return parts[0];
+        }
+        // Stack is in the root directory
+        return "local";
     }
 
     /**
