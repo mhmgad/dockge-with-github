@@ -70,6 +70,14 @@ export default {
             };
         },
         stackName() {
+            // If stack is in a repo group (not "local"), show only the stack name without parent directory
+            if (this.stack.repo && this.stack.repo !== "local") {
+                // Remove the repo prefix from the stack name
+                const repoPrefix = this.stack.repo + "/";
+                if (this.stack.name.startsWith(repoPrefix)) {
+                    return this.stack.name.substring(repoPrefix.length);
+                }
+            }
             return this.stack.name;
         }
     },

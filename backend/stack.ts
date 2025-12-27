@@ -178,7 +178,8 @@ export class Stack {
      * If the stack is in the root directory, return "local"
      */
     get repo() : string {
-        const parts = this.name.split(path.sep);
+        // Stack names always use forward slashes regardless of OS
+        const parts = this.name.split("/");
         if (parts.length > 1) {
             // Stack is in a subdirectory, return the parent folder name
             return parts[0];
@@ -363,8 +364,35 @@ export class Stack {
 
         let composeList = JSON.parse(res.stdout.toString());
 
+        // TODO make it based on manually set labels
+        
+
         for (let composeStack of composeList) {
-            let stack = stackList.get(composeStack.Name);
+            let stack: Stack | undefined;
+
+            // Prioritize matching by config file path if the config file is in the stacks directory
+            // This is more reliable than matching by name, since Docker Compose uses directory name
+            // as project name, which can conflict with stacks in subdirectories
+            if (composeStack.ConfigFiles) {
+                const configPath = composeStack.ConfigFiles;
+                // Normalize both paths for comparison (resolve to absolute paths and normalize separators)
+                const normalizedStacksDir = path.resolve(stacksDir);
+                const normalizedConfigPath = path.resolve(configPath);
+                // Check if the config file is in the stacks directory
+                if (normalizedConfigPath.startsWith(normalizedStacksDir + path.sep) || normalizedConfigPath === normalizedStacksDir) {
+                    // Get the relative path from stacksDir to the directory containing the compose file
+                    const relativePath = path.relative(normalizedStacksDir, path.dirname(normalizedConfigPath));
+                    // Normalize path separators to use forward slashes (consistent with how stack names are stored)
+                    const normalizedPath = relativePath.split(path.sep).join("/");
+                    stack = stackList.get(normalizedPath);
+                }
+            }
+
+            // If not found by config file path, try to match by name
+            // This handles stacks not managed by Dockge or stacks outside the stacks directory
+            if (!stack) {
+                stack = stackList.get(composeStack.Name);
+            }
 
             // This stack probably is not managed by Dockge, but we still want to show it
             if (!stack) {
