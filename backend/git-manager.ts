@@ -305,7 +305,7 @@ export class GitManager {
 
             const gitRoot = await this.getGitRoot(stackPath);
             const git: SimpleGit = simpleGit(gitRoot);
-            
+
             // Get last commit date
             let lastCommitDate: string | undefined;
             try {
@@ -328,7 +328,10 @@ export class GitManager {
                 logger.warn("git-manager", `Could not get ahead/behind counts: ${e}`);
             }
 
-            return { isGitRepo: true, lastCommitDate, ahead, behind };
+            return { isGitRepo: true,
+                lastCommitDate,
+                ahead,
+                behind };
         } catch (error) {
             return { isGitRepo: false };
         }
