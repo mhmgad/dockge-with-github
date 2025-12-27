@@ -486,6 +486,44 @@ export class DockerSocketHandler extends AgentSocketHandler {
                 callbackError(e, callback);
             }
         });
+
+        agentSocket.on("getRepoGitInfo", async (repoName : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        // Use the first stack's path to find the git root
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                const gitInfo = await GitManager.getBasicInfo(repoPath);
+                callbackResult({
+                    ok: true,
+                    gitInfo,
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
     }
 
     async saveStack(server : DockgeServer, name : unknown, composeYAML : unknown, composeENV : unknown, isAdd : unknown) : Promise<Stack> {
