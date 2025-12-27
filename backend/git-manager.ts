@@ -1,6 +1,6 @@
 import { simpleGit, SimpleGit, StatusResult } from "simple-git";
 import { Settings } from "./settings";
-import { log } from "./log";
+import { log as logger } from "./log";
 
 export interface GitCredentials {
     username: string;
@@ -17,6 +17,7 @@ export interface GitStatusResponse {
     tracking: string | null;
     ahead: number;
     behind: number;
+    lastCommitDate?: string;
 }
 
 export class GitManager {
@@ -52,15 +53,28 @@ export class GitManager {
                     staged: true })),
             ];
 
+            // Get last commit date
+            let lastCommitDate: string | undefined;
+            try {
+                const gitLog = await git.log({ maxCount: 1 });
+                if (gitLog.latest) {
+                    lastCommitDate = gitLog.latest.date;
+                }
+            } catch (e) {
+                // Ignore errors getting last commit date
+                logger.warn("git-manager", `Could not get last commit date: ${e}`);
+            }
+
             return {
                 files,
                 current: status.current || "unknown",
                 tracking: status.tracking || null,
                 ahead: status.ahead,
                 behind: status.behind,
+                lastCommitDate,
             };
         } catch (error) {
-            log.error("git-manager", `Error getting git status: ${error}`);
+            logger.error("git-manager", `Error getting git status: ${error}`);
             throw error;
         }
     }
@@ -75,7 +89,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.add(files);
         } catch (error) {
-            log.error("git-manager", `Error adding files: ${error}`);
+            logger.error("git-manager", `Error adding files: ${error}`);
             throw error;
         }
     }
@@ -90,7 +104,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.reset([ "--", ...files ]);
         } catch (error) {
-            log.error("git-manager", `Error unstaging files: ${error}`);
+            logger.error("git-manager", `Error unstaging files: ${error}`);
             throw error;
         }
     }
@@ -105,7 +119,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.commit(message);
         } catch (error) {
-            log.error("git-manager", `Error committing changes: ${error}`);
+            logger.error("git-manager", `Error committing changes: ${error}`);
             throw error;
         }
     }
@@ -132,7 +146,7 @@ export class GitManager {
 
             await git.push();
         } catch (error) {
-            log.error("git-manager", `Error pushing changes: ${error}`);
+            logger.error("git-manager", `Error pushing changes: ${error}`);
             throw error;
         } finally {
             // Restore original remote URL if it was modified
@@ -140,7 +154,7 @@ export class GitManager {
                 try {
                     await git.remote([ "set-url", "origin", originalRemoteUrl ]);
                 } catch (e) {
-                    log.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
                 }
             }
         }
@@ -168,7 +182,7 @@ export class GitManager {
 
             await git.pull();
         } catch (error) {
-            log.error("git-manager", `Error pulling changes: ${error}`);
+            logger.error("git-manager", `Error pulling changes: ${error}`);
             throw error;
         } finally {
             // Restore original remote URL if it was modified
@@ -176,7 +190,7 @@ export class GitManager {
                 try {
                     await git.remote([ "set-url", "origin", originalRemoteUrl ]);
                 } catch (e) {
-                    log.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
                 }
             }
         }
@@ -203,7 +217,7 @@ export class GitManager {
 
         // Only handle HTTPS URLs, skip SSH URLs
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
-            log.warn("git-manager", "SSH URLs are not supported for credential injection. Please configure SSH keys separately.");
+            logger.warn("git-manager", "SSH URLs are not supported for credential injection. Please configure SSH keys separately.");
             return;
         }
 
@@ -216,7 +230,7 @@ export class GitManager {
             // Set the remote URL with credentials temporarily (for this operation only)
             await git.remote([ "set-url", "origin", url.toString() ]);
         } catch (error) {
-            log.error("git-manager", `Error configuring credentials: ${error}`);
+            logger.error("git-manager", `Error configuring credentials: ${error}`);
             throw new Error("Failed to configure git credentials. Please check the remote URL format.");
         }
     }
@@ -258,7 +272,7 @@ export class GitManager {
             const result = await git.revparse([ "--show-toplevel" ]);
             return result.trim();
         } catch (error) {
-            log.error("git-manager", `Error finding git root from ${stackPath}: ${error}`);
+            logger.error("git-manager", `Error finding git root from ${stackPath}: ${error}`);
             throw new Error(`Unable to find git repository root. The path '${stackPath}' may not be inside a git repository.`);
         }
     }
@@ -275,6 +289,51 @@ export class GitManager {
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    /**
+     * Get basic git info for display in list view
+     * Returns isGitRepo flag, lastCommitDate, ahead/behind counts
+     */
+    static async getBasicInfo(stackPath: string): Promise<{ isGitRepo: boolean; lastCommitDate?: string; ahead?: number; behind?: number }> {
+        try {
+            const isGitRepo = await this.isGitRepository(stackPath);
+            if (!isGitRepo) {
+                return { isGitRepo: false };
+            }
+
+            const gitRoot = await this.getGitRoot(stackPath);
+            const git: SimpleGit = simpleGit(gitRoot);
+
+            // Get last commit date
+            let lastCommitDate: string | undefined;
+            try {
+                const gitLog = await git.log({ maxCount: 1 });
+                if (gitLog.latest) {
+                    lastCommitDate = gitLog.latest.date;
+                }
+            } catch (e) {
+                logger.warn("git-manager", `Could not get last commit date: ${e}`);
+            }
+
+            // Get ahead/behind counts
+            let ahead = 0;
+            let behind = 0;
+            try {
+                const status = await git.status();
+                ahead = status.ahead;
+                behind = status.behind;
+            } catch (e) {
+                logger.warn("git-manager", `Could not get ahead/behind counts: ${e}`);
+            }
+
+            return { isGitRepo: true,
+                lastCommitDate,
+                ahead,
+                behind };
+        } catch (error) {
+            return { isGitRepo: false };
         }
     }
 
@@ -305,9 +364,9 @@ export class GitManager {
                 await clonedGit.remote([ "set-url", "origin", repoUrl ]);
             }
 
-            log.info("git-manager", `Repository cloned successfully to ${targetPath}`);
+            logger.info("git-manager", `Repository cloned successfully to ${targetPath}`);
         } catch (error) {
-            log.error("git-manager", `Error cloning repository: ${error}`);
+            logger.error("git-manager", `Error cloning repository: ${error}`);
             throw error;
         }
     }

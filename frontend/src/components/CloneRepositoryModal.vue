@@ -142,7 +142,8 @@ export default {
             this.stackName = "";
             this.endpoint = "";
             this.needsCredentials = false;
-            this.credentials = { username: "", password: "" };
+            this.credentials = { username: "",
+                password: "" };
         },
 
         async checkStoredCredentials() {

@@ -165,5 +165,6 @@
     "stackNamePlaceholder": "my-stack",
     "privateRepositoryNotice": "For private repositories, please provide your GitHub credentials.",
     "addCredentials": "Add Credentials for Private Repository",
-    "clone": "Clone"
+    "clone": "Clone",
+    "justNow": "Just now"
 }
