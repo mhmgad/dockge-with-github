@@ -3,6 +3,7 @@
         <Uptime :stack="stack" :fixed-width="true" class="me-2" />
         <div class="title">
             <span>{{ stackName }}</span>
+            <div v-if="stack.repo && stack.repo !== 'local'" class="repo-label">{{ stack.repo }}</div>
             <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
         </div>
     </router-link>
@@ -158,6 +159,11 @@ export default {
     }
     .title {
         margin-top: -4px;
+    }
+    .repo-label {
+        font-size: 12px;
+        color: $dark-font-color3;
+        font-weight: 500;
     }
     .endpoint {
         font-size: 12px;

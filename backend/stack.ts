@@ -496,6 +496,13 @@ export class Stack {
             }
             options.splice(1, 0, "--env-file", "../global.env");
         }
+        
+        // Add project name to ensure unique identification of stacks
+        // This helps disambiguate stacks with the same name in different repos
+        // Convert forward slashes to hyphens for project name (e.g., "repo1/myapp" -> "repo1-myapp")
+        const projectName = this.name.replace(/\//g, "-");
+        options.splice(1, 0, "-p", projectName);
+        
         console.log(options);
         return options;
     }
