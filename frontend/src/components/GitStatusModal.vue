@@ -13,7 +13,7 @@
         <!-- Sync Preview Mode -->
         <div v-else-if="showSyncPreview">
             <h5>{{ $t('syncPreview') || 'Sync Preview' }}</h5>
-            
+
             <!-- Credentials Dialog (if needed) -->
             <div v-if="syncPreview.needsCredentials && showCredentialsDialog" class="mb-3">
                 <div class="alert alert-info">
@@ -190,7 +190,7 @@
             <button class="btn btn-secondary" @click="onHide">
                 {{ $t('close') }}
             </button>
-            
+
             <!-- Sync Preview Mode Buttons -->
             <template v-if="showSyncPreview">
                 <button
@@ -426,7 +426,7 @@ export default {
                 this.loading = false;
                 if (res.ok && res.preview) {
                     this.syncPreview = res.preview;
-                    
+
                     // If credentials are needed, show the dialog
                     if (this.syncPreview.needsCredentials) {
                         this.showCredentialsDialog = true;

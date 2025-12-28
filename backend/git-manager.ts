@@ -240,8 +240,8 @@ export class GitManager {
             } catch (error) {
                 // Check if the error is related to authentication
                 const errorMsg = String(error);
-                if (errorMsg.includes("Authentication failed") || 
-                    errorMsg.includes("authentication") || 
+                if (errorMsg.includes("Authentication failed") ||
+                    errorMsg.includes("authentication") ||
                     errorMsg.includes("403") ||
                     errorMsg.includes("401")) {
                     needsCredentials = true;
@@ -255,12 +255,24 @@ export class GitManager {
             // Get local status
             const status = await git.status();
             const localChanges = [
-                ...status.modified.map(file => ({ path: file, status: "modified", staged: false })),
-                ...status.not_added.map(file => ({ path: file, status: "untracked", staged: false })),
-                ...status.created.map(file => ({ path: file, status: "new file", staged: true })),
-                ...status.deleted.map(file => ({ path: file, status: "deleted", staged: false })),
-                ...status.renamed.map(file => ({ path: file.to, status: "renamed", staged: true })),
-                ...status.staged.map(file => ({ path: file, status: "staged", staged: true })),
+                ...status.modified.map(file => ({ path: file,
+                    status: "modified",
+                    staged: false })),
+                ...status.not_added.map(file => ({ path: file,
+                    status: "untracked",
+                    staged: false })),
+                ...status.created.map(file => ({ path: file,
+                    status: "new file",
+                    staged: true })),
+                ...status.deleted.map(file => ({ path: file,
+                    status: "deleted",
+                    staged: false })),
+                ...status.renamed.map(file => ({ path: file.to,
+                    status: "renamed",
+                    staged: true })),
+                ...status.staged.map(file => ({ path: file,
+                    status: "staged",
+                    staged: true })),
             ];
 
             // Get remote commits that we don't have locally
@@ -271,7 +283,7 @@ export class GitManager {
                         from: status.current || "HEAD",
                         to: `origin/${status.tracking || status.current}`,
                     });
-                    
+
                     for (const commit of log.all) {
                         remoteCommits.push({
                             hash: commit.hash.substring(0, 7),
