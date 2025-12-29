@@ -20,6 +20,25 @@ export interface GitStatusResponse {
     lastCommitDate?: string;
 }
 
+export interface GitSyncPreview {
+    hasLocalChanges: boolean;
+    hasRemoteChanges: boolean;
+    localChanges: {
+        path: string;
+        status: string;
+        staged: boolean;
+    }[];
+    remoteCommits: {
+        hash: string;
+        message: string;
+        author: string;
+        date: string;
+    }[];
+    ahead: number;
+    behind: number;
+    needsCredentials: boolean;
+}
+
 export class GitManager {
 
     /**
@@ -186,6 +205,154 @@ export class GitManager {
             throw error;
         } finally {
             // Restore original remote URL if it was modified
+            if (originalRemoteUrl && credentials) {
+                try {
+                    await git.remote([ "set-url", "origin", originalRemoteUrl ]);
+                } catch (e) {
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get sync preview - fetch remote changes and show what will be synced
+     */
+    static async getSyncPreview(stackPath: string, credentials?: GitCredentials): Promise<GitSyncPreview> {
+        const gitRoot = await this.getGitRoot(stackPath);
+        const git: SimpleGit = simpleGit(gitRoot);
+        let originalRemoteUrl: string | null = null;
+
+        try {
+            // First fetch to get the latest remote state
+            if (credentials) {
+                const remotes = await git.getRemotes(true);
+                if (remotes.length > 0) {
+                    originalRemoteUrl = remotes[0].refs.push || remotes[0].refs.fetch;
+                }
+                await this.configureCredentials(gitRoot, credentials);
+            }
+
+            // Try to fetch, if it fails it might be due to missing credentials
+            let needsCredentials = false;
+            try {
+                await git.fetch();
+            } catch (error) {
+                // Check if the error is related to authentication
+                const errorMsg = String(error);
+                if (errorMsg.includes("Authentication failed") ||
+                    errorMsg.includes("authentication") ||
+                    errorMsg.includes("403") ||
+                    errorMsg.includes("401")) {
+                    needsCredentials = true;
+                }
+                // If credentials are missing and not yet tried, indicate that
+                if (!credentials) {
+                    needsCredentials = true;
+                }
+            }
+
+            // Get local status
+            const status = await git.status();
+            const localChanges = [
+                ...status.modified.map(file => ({ path: file,
+                    status: "modified",
+                    staged: false })),
+                ...status.not_added.map(file => ({ path: file,
+                    status: "untracked",
+                    staged: false })),
+                ...status.created.map(file => ({ path: file,
+                    status: "new file",
+                    staged: true })),
+                ...status.deleted.map(file => ({ path: file,
+                    status: "deleted",
+                    staged: false })),
+                ...status.renamed.map(file => ({ path: file.to,
+                    status: "renamed",
+                    staged: true })),
+                ...status.staged.map(file => ({ path: file,
+                    status: "staged",
+                    staged: true })),
+            ];
+
+            // Get remote commits that we don't have locally
+            const remoteCommits: { hash: string; message: string; author: string; date: string }[] = [];
+            if (status.behind > 0 && !needsCredentials) {
+                try {
+                    // Get commits on remote that we don't have locally
+                    const currentBranch = status.current || "HEAD";
+                    const trackingBranch = status.tracking || status.current;
+                    const log = await git.log([ `${currentBranch}..origin/${trackingBranch}` ]);
+
+                    for (const commit of log.all) {
+                        remoteCommits.push({
+                            hash: commit.hash.substring(0, 7),
+                            message: commit.message,
+                            author: commit.author_name,
+                            date: commit.date,
+                        });
+                    }
+                } catch (e) {
+                    logger.warn("git-manager", `Could not get remote commits: ${e}`);
+                }
+            }
+
+            return {
+                hasLocalChanges: status.ahead > 0 || localChanges.length > 0,
+                hasRemoteChanges: status.behind > 0,
+                localChanges,
+                remoteCommits,
+                ahead: status.ahead,
+                behind: status.behind,
+                needsCredentials,
+            };
+        } catch (error) {
+            logger.error("git-manager", `Error getting sync preview: ${error}`);
+            throw error;
+        } finally {
+            if (originalRemoteUrl && credentials) {
+                try {
+                    await git.remote([ "set-url", "origin", originalRemoteUrl ]);
+                } catch (e) {
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Perform sync operation - pull remote changes and push local changes
+     */
+    static async sync(stackPath: string, credentials?: GitCredentials): Promise<void> {
+        const gitRoot = await this.getGitRoot(stackPath);
+        const git: SimpleGit = simpleGit(gitRoot);
+        let originalRemoteUrl: string | null = null;
+
+        try {
+            if (credentials) {
+                const remotes = await git.getRemotes(true);
+                if (remotes.length > 0) {
+                    originalRemoteUrl = remotes[0].refs.push || remotes[0].refs.fetch;
+                }
+                await this.configureCredentials(gitRoot, credentials);
+            }
+
+            // First pull remote changes
+            let status = await git.status();
+            if (status.behind > 0) {
+                await git.pull();
+                // Refresh status after pull to get updated ahead count
+                status = await git.status();
+            }
+
+            // Then push local changes
+            if (status.ahead > 0) {
+                await git.push();
+            }
+        } catch (error) {
+            logger.error("git-manager", `Error syncing changes: ${error}`);
+            throw error;
+        } finally {
             if (originalRemoteUrl && credentials) {
                 try {
                     await git.remote([ "set-url", "origin", originalRemoteUrl ]);

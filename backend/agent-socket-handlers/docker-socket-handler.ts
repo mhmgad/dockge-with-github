@@ -438,6 +438,67 @@ export class DockerSocketHandler extends AgentSocketHandler {
             }
         });
 
+        agentSocket.on("getSyncPreview", async (stackName : unknown, credentials : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(stackName) !== "string") {
+                    throw new ValidationError("Stack name must be a string");
+                }
+
+                const stack = await Stack.getStack(server, stackName);
+
+                // Get credentials from parameter or stored settings
+                let creds: GitCredentials | null = null;
+                if (credentials && typeof credentials === "object" && "username" in credentials && "password" in credentials) {
+                    creds = credentials as GitCredentials;
+                    // Save credentials for future use
+                    await GitManager.saveCredentials(creds);
+                } else {
+                    creds = await GitManager.getCredentials();
+                }
+
+                const preview = await GitManager.getSyncPreview(stack.path, creds || undefined);
+                callbackResult({
+                    ok: true,
+                    preview,
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        agentSocket.on("gitSync", async (stackName : unknown, credentials : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(stackName) !== "string") {
+                    throw new ValidationError("Stack name must be a string");
+                }
+
+                const stack = await Stack.getStack(server, stackName);
+
+                // Get credentials from parameter or stored settings
+                let creds: GitCredentials | null = null;
+                if (credentials && typeof credentials === "object" && "username" in credentials && "password" in credentials) {
+                    creds = credentials as GitCredentials;
+                    // Save credentials for future use
+                    await GitManager.saveCredentials(creds);
+                } else {
+                    creds = await GitManager.getCredentials();
+                }
+
+                await GitManager.sync(stack.path, creds || undefined);
+                callbackResult({
+                    ok: true,
+                    msg: "Changes synced successfully",
+                }, callback);
+                server.sendStackList();
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
         agentSocket.on("gitClone", async (repoUrl : unknown, stackName : unknown, credentials : unknown, callback) => {
             try {
                 checkLogin(socket);

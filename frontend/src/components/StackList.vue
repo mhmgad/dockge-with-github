@@ -54,26 +54,17 @@
                         <span class="repo-name">{{ repoName }}</span>
                         <span class="stack-count">({{ repoStacks.length }})</span>
                     </div>
-                    <div v-if="repoName !== 'local'" class="repo-header-right">
+                    <div v-if="repoGitInfo[repoName]?.isGitRepo" class="repo-header-right">
                         <span v-if="repoGitInfo[repoName]?.lastSyncTime" class="last-sync-time">
                             <font-awesome-icon icon="clock" class="me-1" />
                             {{ formatSyncTime(repoGitInfo[repoName].lastSyncTime) }}
                         </span>
                         <button
-                            v-if="repoGitInfo[repoName]?.isGitRepo"
-                            class="btn btn-sm btn-outline-primary me-1"
+                            class="btn btn-sm btn-outline-info me-1"
                             :disabled="repoGitInfo[repoName]?.processing"
-                            @click.stop="pullRepo(repoName, repoStacks[0])"
+                            @click.stop="syncRepo(repoName, repoStacks[0])"
                         >
-                            <font-awesome-icon icon="download" />
-                        </button>
-                        <button
-                            v-if="repoGitInfo[repoName]?.isGitRepo"
-                            class="btn btn-sm btn-outline-success"
-                            :disabled="repoGitInfo[repoName]?.processing"
-                            @click.stop="pushRepo(repoName, repoStacks[0])"
-                        >
-                            <font-awesome-icon icon="upload" />
+                            <font-awesome-icon icon="sync" />
                         </button>
                     </div>
                 </div>
@@ -430,9 +421,8 @@ export default {
          */
         fetchAllRepoGitInfo() {
             for (const repoName of Object.keys(this.groupedStackList)) {
-                if (repoName !== "local") {
-                    this.fetchRepoGitInfo(repoName);
-                }
+                // Fetch git info for all repos, including "Default"
+                this.fetchRepoGitInfo(repoName);
             }
         },
         /**
@@ -441,7 +431,7 @@ export default {
          * @returns {void}
          */
         fetchRepoGitInfo(repoName) {
-            if (!repoName || repoName === "local") {
+            if (!repoName) {
                 return;
             }
 
@@ -498,70 +488,105 @@ export default {
             }
         },
         /**
-         * Pull changes for a repo
+         * Sync changes for a repo (combines pull and push with preview)
+         * @param {string} repoName - Name of the repo
+         * @param {object} sampleStack - A stack from the repo (to get endpoint)
+         * @returns {void}
+         */
+        syncRepo(repoName, sampleStack) {
+            if (!repoName || !sampleStack) {
+                return;
+            }
+
+            // Mark as processing
+            if (this.repoGitInfo[repoName]) {
+                this.repoGitInfo[repoName].processing = true;
+            }
+
+            const endpoint = sampleStack.endpoint || "";
+            const stackName = sampleStack.name;
+
+            // First get sync preview
+            this.$root.emitAgent(endpoint, "getSyncPreview", stackName, null, (previewRes) => {
+                if (!previewRes.ok) {
+                    if (this.repoGitInfo[repoName]) {
+                        this.repoGitInfo[repoName].processing = false;
+                    }
+                    this.$root.toastError(previewRes.msg || "Failed to get sync preview");
+                    return;
+                }
+
+                const preview = previewRes.preview;
+
+                // If credentials are needed, show error
+                if (preview.needsCredentials) {
+                    if (this.repoGitInfo[repoName]) {
+                        this.repoGitInfo[repoName].processing = false;
+                    }
+                    this.$root.toastError(this.$t("gitCredentialsRequiredForSync") || "Git credentials are required. Please open the stack's git status to configure credentials.");
+                    return;
+                }
+
+                // If nothing to sync
+                if (!preview.hasLocalChanges && !preview.hasRemoteChanges) {
+                    if (this.repoGitInfo[repoName]) {
+                        this.repoGitInfo[repoName].processing = false;
+                    }
+                    this.$root.toastSuccess(this.$t("alreadyInSync") || "Already in sync!");
+                    return;
+                }
+
+                // Build confirmation message
+                let message = this.$t("syncWill") || "Sync will:\n";
+                message += "\n";
+                if (preview.hasRemoteChanges) {
+                    message += (this.$t("pullCommitsFromRemote", [ preview.behind ]) || `- Pull ${preview.behind} commit(s) from remote`) + "\n";
+                }
+                if (preview.hasLocalChanges) {
+                    message += (this.$t("pushCommitsToRemote", [ preview.ahead ]) || `- Push ${preview.ahead} commit(s) to remote`) + "\n";
+                }
+                message += "\n" + (this.$t("continue") || "Continue?");
+
+                if (confirm(message)) {
+                    // Perform sync
+                    this.$root.emitAgent(endpoint, "gitSync", stackName, null, (syncRes) => {
+                        if (this.repoGitInfo[repoName]) {
+                            this.repoGitInfo[repoName].processing = false;
+                        }
+
+                        this.$root.toastRes(syncRes);
+
+                        if (syncRes.ok) {
+                            // Refresh git info after successful sync
+                            this.fetchRepoGitInfo(repoName);
+                        }
+                    });
+                } else {
+                    if (this.repoGitInfo[repoName]) {
+                        this.repoGitInfo[repoName].processing = false;
+                    }
+                }
+            });
+        },
+        /**
+         * Pull changes for a repo (legacy - now uses sync)
          * @param {string} repoName - Name of the repo
          * @param {object} sampleStack - A stack from the repo (to get endpoint)
          * @returns {void}
          */
         pullRepo(repoName, sampleStack) {
-            if (!repoName || !sampleStack) {
-                return;
-            }
-
-            // Mark as processing
-            if (this.repoGitInfo[repoName]) {
-                this.repoGitInfo[repoName].processing = true;
-            }
-
-            const endpoint = sampleStack.endpoint || "";
-            const stackName = sampleStack.name;
-
-            // Get stored credentials
-            this.$root.emitAgent(endpoint, "gitPull", stackName, null, (res) => {
-                if (this.repoGitInfo[repoName]) {
-                    this.repoGitInfo[repoName].processing = false;
-                }
-
-                this.$root.toastRes(res);
-
-                if (res.ok) {
-                    // Refresh git info after successful pull
-                    this.fetchRepoGitInfo(repoName);
-                }
-            });
+            // Redirect to sync operation
+            this.syncRepo(repoName, sampleStack);
         },
         /**
-         * Push changes for a repo
+         * Push changes for a repo (legacy - now uses sync)
          * @param {string} repoName - Name of the repo
          * @param {object} sampleStack - A stack from the repo (to get endpoint)
          * @returns {void}
          */
         pushRepo(repoName, sampleStack) {
-            if (!repoName || !sampleStack) {
-                return;
-            }
-
-            // Mark as processing
-            if (this.repoGitInfo[repoName]) {
-                this.repoGitInfo[repoName].processing = true;
-            }
-
-            const endpoint = sampleStack.endpoint || "";
-            const stackName = sampleStack.name;
-
-            // Get stored credentials
-            this.$root.emitAgent(endpoint, "gitPush", stackName, null, (res) => {
-                if (this.repoGitInfo[repoName]) {
-                    this.repoGitInfo[repoName].processing = false;
-                }
-
-                this.$root.toastRes(res);
-
-                if (res.ok) {
-                    // Refresh git info after successful push
-                    this.fetchRepoGitInfo(repoName);
-                }
-            });
+            // Redirect to sync operation
+            this.syncRepo(repoName, sampleStack);
         },
     },
 };
