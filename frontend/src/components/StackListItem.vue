@@ -3,7 +3,7 @@
         <Uptime :stack="stack" :fixed-width="true" class="me-2" />
         <div class="title">
             <span>{{ stackName }}</span>
-            <div v-if="stack.repo && stack.repo !== 'local'" class="repo-label">{{ stack.repo }}</div>
+            <div v-if="stack.repo && stack.repo !== 'Default'" class="repo-label">{{ stack.repo }}</div>
             <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
         </div>
     </router-link>
@@ -71,8 +71,8 @@ export default {
             };
         },
         stackName() {
-            // If stack is in a repo group (not "local"), show only the stack name without parent directory
-            if (this.stack.repo && this.stack.repo !== "local") {
+            // If stack is in a repo group (not "Default"), show only the stack name without parent directory
+            if (this.stack.repo && this.stack.repo !== "Default") {
                 // Remove the repo prefix from the stack name
                 const repoPrefix = this.stack.repo + "/";
                 if (this.stack.name.startsWith(repoPrefix)) {

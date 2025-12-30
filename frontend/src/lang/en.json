@@ -137,6 +137,7 @@
     "ConsoleNotEnabledMSG3": "If you understand the risk, you can enable it by setting <code>DOCKGE_ENABLE_CONSOLE=true</code> in the environment variables.",
     "confirmLeaveStack": "You are currently editing a stack. Are you sure you want to leave?",
     "gitStatus": "Git Status",
+    "gitSync": "Git Sync",
     "notGitRepository": "This stack is not a git repository.",
     "branch": "Branch",
     "commitsAhead": "commits ahead",
@@ -153,6 +154,7 @@
     "pull": "Pull",
     "close": "Close",
     "gitCredentialsRequired": "Git credentials are required for push/pull operations.",
+    "gitCredentials": "Git Credentials",
     "username": "Username",
     "token": "Token",
     "githubUsername": "GitHub username",
@@ -166,5 +168,11 @@
     "privateRepositoryNotice": "For private repositories, please provide your GitHub credentials.",
     "addCredentials": "Add Credentials for Private Repository",
     "clone": "Clone",
-    "justNow": "Just now"
+    "justNow": "Just now",
+    "localChanges": "Local Changes",
+    "remoteDiff": "Remote Diff",
+    "fetchRemote": "Fetch Remote",
+    "incomingCommits": "Incoming Commits",
+    "outgoingCommits": "Outgoing Commits",
+    "noRemoteChanges": "No remote changes detected. Click 'Fetch Remote' to check for updates."
 }

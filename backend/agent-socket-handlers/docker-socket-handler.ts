@@ -524,6 +524,326 @@ export class DockerSocketHandler extends AgentSocketHandler {
                 callbackError(e, callback);
             }
         });
+
+        // Get full git status for a repo (including remote diff)
+        agentSocket.on("getRepoGitStatus", async (repoName : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                const isGitRepo = await GitManager.isGitRepository(repoPath);
+                if (!isGitRepo) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Not a git repository",
+                    }, callback);
+                    return;
+                }
+
+                const gitStatus = await GitManager.getRepoStatus(repoPath);
+                callbackResult({
+                    ok: true,
+                    gitStatus,
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        // Fetch remote updates for a repo
+        agentSocket.on("gitFetch", async (repoName : unknown, credentials : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                // Get credentials from parameter or stored settings
+                let creds: GitCredentials | null = null;
+                if (credentials && typeof credentials === "object" && "username" in credentials && "password" in credentials) {
+                    creds = credentials as GitCredentials;
+                    await GitManager.saveCredentials(creds);
+                } else {
+                    creds = await GitManager.getCredentials();
+                }
+
+                await GitManager.fetch(repoPath, creds || undefined);
+                callbackResult({
+                    ok: true,
+                    msg: "Fetched from remote",
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        // Pull changes for a repo by repo name
+        agentSocket.on("gitPullRepo", async (repoName : unknown, credentials : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                // Get credentials from parameter or stored settings
+                let creds: GitCredentials | null = null;
+                if (credentials && typeof credentials === "object" && "username" in credentials && "password" in credentials) {
+                    creds = credentials as GitCredentials;
+                    await GitManager.saveCredentials(creds);
+                } else {
+                    creds = await GitManager.getCredentials();
+                }
+
+                await GitManager.pull(repoPath, creds || undefined);
+                callbackResult({
+                    ok: true,
+                    msg: "Changes pulled from remote",
+                }, callback);
+                server.sendStackList();
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        // Git operations for repo (add, commit, push by repo name)
+        agentSocket.on("gitAddFilesRepo", async (repoName : unknown, files : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                if (!Array.isArray(files)) {
+                    throw new ValidationError("Files must be an array");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                await GitManager.addFiles(repoPath, files);
+                callbackResult({
+                    ok: true,
+                    msg: "Files added to staging",
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        agentSocket.on("gitUnstageFilesRepo", async (repoName : unknown, files : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                if (!Array.isArray(files)) {
+                    throw new ValidationError("Files must be an array");
+                }
+
+                if (files.length === 0) {
+                    callbackResult({
+                        ok: true,
+                        msg: "No files to unstage",
+                    }, callback);
+                    return;
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                await GitManager.unstageFiles(repoPath, files);
+                callbackResult({
+                    ok: true,
+                    msg: "Files removed from staging",
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        agentSocket.on("gitCommitRepo", async (repoName : unknown, message : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                if (typeof(message) !== "string") {
+                    throw new ValidationError("Commit message must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                await GitManager.commit(repoPath, message);
+                callbackResult({
+                    ok: true,
+                    msg: "Changes committed",
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        agentSocket.on("gitPushRepo", async (repoName : unknown, credentials : unknown, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (typeof(repoName) !== "string") {
+                    throw new ValidationError("Repo name must be a string");
+                }
+
+                // Get any stack from this repo to find the repo path
+                const stackList = await Stack.getStackList(server, false);
+                let repoPath: string | null = null;
+
+                for (const [ , stack ] of stackList) {
+                    if (stack.repo === repoName) {
+                        repoPath = stack.path;
+                        break;
+                    }
+                }
+
+                if (!repoPath) {
+                    callbackResult({
+                        ok: false,
+                        msg: "Repo not found",
+                    }, callback);
+                    return;
+                }
+
+                // Get credentials from parameter or stored settings
+                let creds: GitCredentials | null = null;
+                if (credentials && typeof credentials === "object" && "username" in credentials && "password" in credentials) {
+                    creds = credentials as GitCredentials;
+                    await GitManager.saveCredentials(creds);
+                } else {
+                    creds = await GitManager.getCredentials();
+                }
+
+                await GitManager.push(repoPath, creds || undefined);
+                callbackResult({
+                    ok: true,
+                    msg: "Changes pushed to remote",
+                }, callback);
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
     }
 
     async saveStack(server : DockgeServer, name : unknown, composeYAML : unknown, composeENV : unknown, isAdd : unknown) : Promise<Stack> {

@@ -32,26 +32,46 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             const status: StatusResult = await git.status();
 
-            const files = [
-                ...status.modified.map(file => ({ path: file,
-                    status: "modified",
-                    staged: false })),
-                ...status.not_added.map(file => ({ path: file,
-                    status: "untracked",
-                    staged: false })),
-                ...status.created.map(file => ({ path: file,
-                    status: "new file",
-                    staged: true })),
-                ...status.deleted.map(file => ({ path: file,
-                    status: "deleted",
-                    staged: false })),
-                ...status.renamed.map(file => ({ path: file.to,
-                    status: "renamed",
-                    staged: true })),
-                ...status.staged.map(file => ({ path: file,
-                    status: "staged",
-                    staged: true })),
-            ];
+            // Use a Map to deduplicate files by path
+            const fileMap = new Map<string, { path: string; status: string; staged: boolean }>();
+
+            // Unstaged changes
+            for (const file of status.modified) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "M",
+                    staged: false });
+            }
+            for (const file of status.not_added) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "?",
+                    staged: false });
+            }
+            for (const file of status.deleted) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "D",
+                    staged: false });
+            }
+
+            // Staged changes (these take priority as separate entries)
+            // Process staged modifications first
+            for (const file of status.staged) {
+                fileMap.set(`staged:${file}`, { path: file,
+                    status: "M",
+                    staged: true });
+            }
+            // Then override with more specific statuses (created files should show as "A" not "M")
+            for (const file of status.created) {
+                fileMap.set(`staged:${file}`, { path: file,
+                    status: "A",
+                    staged: true });
+            }
+            for (const rename of status.renamed) {
+                fileMap.set(`staged:${rename.to}`, { path: `${rename.from} → ${rename.to}`,
+                    status: "R",
+                    staged: true });
+            }
+
+            const files = Array.from(fileMap.values());
 
             // Get last commit date
             let lastCommitDate: string | undefined;
@@ -335,6 +355,122 @@ export class GitManager {
         } catch (error) {
             return { isGitRepo: false };
         }
+    }
+
+    /**
+     * Fetch from remote to update tracking information
+     */
+    static async fetch(stackPath: string, credentials?: GitCredentials): Promise<void> {
+        const gitRoot = await this.getGitRoot(stackPath);
+        const git: SimpleGit = simpleGit(gitRoot);
+        let originalRemoteUrl: string | null = null;
+
+        try {
+            if (credentials) {
+                const remotes = await git.getRemotes(true);
+                if (remotes.length > 0) {
+                    originalRemoteUrl = remotes[0].refs.push || remotes[0].refs.fetch;
+                }
+                await this.configureCredentials(gitRoot, credentials);
+            }
+
+            await git.fetch();
+        } catch (error) {
+            logger.error("git-manager", `Error fetching: ${error}`);
+            throw error;
+        } finally {
+            if (originalRemoteUrl && credentials) {
+                try {
+                    await git.remote([ "set-url", "origin", originalRemoteUrl ]);
+                } catch (e) {
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get remote diff - shows commits that are ahead/behind
+     */
+    static async getRemoteDiff(stackPath: string): Promise<{
+        incomingCommits: { hash: string; message: string; date: string; author: string }[];
+        outgoingCommits: { hash: string; message: string; date: string; author: string }[];
+    }> {
+        try {
+            const gitRoot = await this.getGitRoot(stackPath);
+            const git: SimpleGit = simpleGit(gitRoot);
+
+            const status = await git.status();
+            const tracking = status.tracking;
+
+            const incomingCommits: { hash: string; message: string; date: string; author: string }[] = [];
+            const outgoingCommits: { hash: string; message: string; date: string; author: string }[] = [];
+
+            if (!tracking) {
+                return { incomingCommits, outgoingCommits };
+            }
+
+            // Get incoming commits (commits on remote that we don't have)
+            if (status.behind > 0) {
+                try {
+                    const incoming = await git.log({
+                        from: status.current || "HEAD",
+                        to: tracking,
+                    });
+                    for (const commit of incoming.all) {
+                        incomingCommits.push({
+                            hash: commit.hash.substring(0, 7),
+                            message: commit.message,
+                            date: commit.date,
+                            author: commit.author_name,
+                        });
+                    }
+                } catch (e) {
+                    logger.warn("git-manager", `Could not get incoming commits: ${e}`);
+                }
+            }
+
+            // Get outgoing commits (commits we have that remote doesn't)
+            if (status.ahead > 0) {
+                try {
+                    const outgoing = await git.log({
+                        from: tracking,
+                        to: status.current || "HEAD",
+                    });
+                    for (const commit of outgoing.all) {
+                        outgoingCommits.push({
+                            hash: commit.hash.substring(0, 7),
+                            message: commit.message,
+                            date: commit.date,
+                            author: commit.author_name,
+                        });
+                    }
+                } catch (e) {
+                    logger.warn("git-manager", `Could not get outgoing commits: ${e}`);
+                }
+            }
+
+            return { incomingCommits, outgoingCommits };
+        } catch (error) {
+            logger.error("git-manager", `Error getting remote diff: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get git status for a repo by repo name (operates at git root level)
+     */
+    static async getRepoStatus(stackPath: string): Promise<GitStatusResponse & {
+        incomingCommits: { hash: string; message: string; date: string; author: string }[];
+        outgoingCommits: { hash: string; message: string; date: string; author: string }[];
+    }> {
+        const status = await this.getStatus(stackPath);
+        const remoteDiff = await this.getRemoteDiff(stackPath);
+
+        return {
+            ...status,
+            ...remoteDiff,
+        };
     }
 
     /**

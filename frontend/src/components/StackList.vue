@@ -54,26 +54,20 @@
                         <span class="repo-name">{{ repoName }}</span>
                         <span class="stack-count">({{ repoStacks.length }})</span>
                     </div>
-                    <div v-if="repoName !== 'local'" class="repo-header-right">
+                    <div v-if="repoName !== 'Default'" class="repo-header-right">
                         <span v-if="repoGitInfo[repoName]?.lastSyncTime" class="last-sync-time">
                             <font-awesome-icon icon="clock" class="me-1" />
                             {{ formatSyncTime(repoGitInfo[repoName].lastSyncTime) }}
                         </span>
                         <button
                             v-if="repoGitInfo[repoName]?.isGitRepo"
-                            class="btn btn-sm btn-outline-primary me-1"
+                            class="btn-git-sync"
                             :disabled="repoGitInfo[repoName]?.processing"
-                            @click.stop="pullRepo(repoName, repoStacks[0])"
+                            :title="$t('gitSync')"
+                            @click.stop="openGitSync(repoName, repoStacks[0])"
                         >
-                            <font-awesome-icon icon="download" />
-                        </button>
-                        <button
-                            v-if="repoGitInfo[repoName]?.isGitRepo"
-                            class="btn btn-sm btn-outline-success"
-                            :disabled="repoGitInfo[repoName]?.processing"
-                            @click.stop="pushRepo(repoName, repoStacks[0])"
-                        >
-                            <font-awesome-icon icon="upload" />
+                            <font-awesome-icon icon="sync" class="me-1" />
+                            <span class="btn-text">{{ $t('gitSync') }}</span>
                         </button>
                     </div>
                 </div>
@@ -93,17 +87,25 @@
     <Confirm ref="confirmPause" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="pauseSelected">
         {{ $t("pauseStackMsg") }}
     </Confirm>
+
+    <GitStatusModal
+        ref="gitStatusModal"
+        :repo-name="selectedRepoName"
+        :endpoint="selectedRepoEndpoint"
+    />
 </template>
 
 <script>
 import Confirm from "../components/Confirm.vue";
 import StackListItem from "../components/StackListItem.vue";
+import GitStatusModal from "../components/GitStatusModal.vue";
 import { CREATED_FILE, CREATED_STACK, EXITED, RUNNING, UNKNOWN } from "../../../common/util-common";
 
 export default {
     components: {
         Confirm,
         StackListItem,
+        GitStatusModal,
     },
     props: {
         /** Should the scrollbar be shown */
@@ -125,6 +127,8 @@ export default {
                 tags: null,
             },
             repoGitInfo: {},
+            selectedRepoName: "",
+            selectedRepoEndpoint: "",
         };
     },
     computed: {
@@ -160,7 +164,7 @@ export default {
                 let searchTextMatch = true;
                 if (this.searchText !== "") {
                     const loweredSearchText = this.searchText.toLowerCase();
-                    const repoName = stack.repo || "local";
+                    const repoName = stack.repo || "Default";
                     searchTextMatch =
                         stack.name.toLowerCase().includes(loweredSearchText)
                         || repoName.toLowerCase().includes(loweredSearchText)
@@ -232,7 +236,7 @@ export default {
             const groups = {};
 
             for (const stack of this.sortedStackList) {
-                const repoName = stack.repo || "local";
+                const repoName = stack.repo || "Default";
 
                 if (!groups[repoName]) {
                     groups[repoName] = [];
@@ -241,12 +245,12 @@ export default {
                 groups[repoName].push(stack);
             }
 
-            // Sort repo names, with "local" always first
+            // Sort repo names, with "Default" always first
             const sortedRepos = Object.keys(groups).sort((a, b) => {
-                if (a === "local") {
+                if (a === "Default") {
                     return -1;
                 }
-                if (b === "local") {
+                if (b === "Default") {
                     return 1;
                 }
                 return a.localeCompare(b);
@@ -430,7 +434,7 @@ export default {
          */
         fetchAllRepoGitInfo() {
             for (const repoName of Object.keys(this.groupedStackList)) {
-                if (repoName !== "local") {
+                if (repoName !== "Default") {
                     this.fetchRepoGitInfo(repoName);
                 }
             }
@@ -441,7 +445,7 @@ export default {
          * @returns {void}
          */
         fetchRepoGitInfo(repoName) {
-            if (!repoName || repoName === "local") {
+            if (!repoName || repoName === "Default") {
                 return;
             }
 
@@ -498,69 +502,22 @@ export default {
             }
         },
         /**
-         * Pull changes for a repo
+         * Open Git Sync modal for a repo
          * @param {string} repoName - Name of the repo
          * @param {object} sampleStack - A stack from the repo (to get endpoint)
          * @returns {void}
          */
-        pullRepo(repoName, sampleStack) {
+        openGitSync(repoName, sampleStack) {
             if (!repoName || !sampleStack) {
                 return;
             }
 
-            // Mark as processing
-            if (this.repoGitInfo[repoName]) {
-                this.repoGitInfo[repoName].processing = true;
-            }
+            this.selectedRepoName = repoName;
+            this.selectedRepoEndpoint = sampleStack.endpoint || "";
 
-            const endpoint = sampleStack.endpoint || "";
-            const stackName = sampleStack.name;
-
-            // Get stored credentials
-            this.$root.emitAgent(endpoint, "gitPull", stackName, null, (res) => {
-                if (this.repoGitInfo[repoName]) {
-                    this.repoGitInfo[repoName].processing = false;
-                }
-
-                this.$root.toastRes(res);
-
-                if (res.ok) {
-                    // Refresh git info after successful pull
-                    this.fetchRepoGitInfo(repoName);
-                }
-            });
-        },
-        /**
-         * Push changes for a repo
-         * @param {string} repoName - Name of the repo
-         * @param {object} sampleStack - A stack from the repo (to get endpoint)
-         * @returns {void}
-         */
-        pushRepo(repoName, sampleStack) {
-            if (!repoName || !sampleStack) {
-                return;
-            }
-
-            // Mark as processing
-            if (this.repoGitInfo[repoName]) {
-                this.repoGitInfo[repoName].processing = true;
-            }
-
-            const endpoint = sampleStack.endpoint || "";
-            const stackName = sampleStack.name;
-
-            // Get stored credentials
-            this.$root.emitAgent(endpoint, "gitPush", stackName, null, (res) => {
-                if (this.repoGitInfo[repoName]) {
-                    this.repoGitInfo[repoName].processing = false;
-                }
-
-                this.$root.toastRes(res);
-
-                if (res.ok) {
-                    // Refresh git info after successful push
-                    this.fetchRepoGitInfo(repoName);
-                }
+            // Use nextTick to ensure props are updated before opening
+            this.$nextTick(() => {
+                this.$refs.gitStatusModal.open();
             });
         },
     },
@@ -710,10 +667,44 @@ export default {
         font-weight: 400;
         white-space: nowrap;
     }
+}
 
-    .btn-sm {
-        padding: 2px 8px;
-        font-size: 12px;
+.btn-git-sync {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: $primary;
+    background-color: transparent;
+    border: 1px solid $primary;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all ease-in-out 0.15s;
+    white-space: nowrap;
+
+    &:hover {
+        background-color: $primary;
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .dark & {
+        color: $primary;
+        border-color: $primary;
+
+        &:hover {
+            background-color: $primary;
+            color: $dark-font-color2;
+        }
+    }
+
+    .btn-text {
+        margin-left: 2px;
     }
 }
 
