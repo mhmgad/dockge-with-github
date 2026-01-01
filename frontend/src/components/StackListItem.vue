@@ -230,7 +230,7 @@ export default {
         margin-left: 8px;
         border-radius: 3px;
         background-color: $warning;
-        color: $dark;
+        color: #000;
         text-transform: uppercase;
     }
     .repo-label {
