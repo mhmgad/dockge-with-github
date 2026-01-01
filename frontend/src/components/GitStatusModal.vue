@@ -248,12 +248,21 @@
             </button>
             <button
                 v-if="isGitRepo && gitStatus.behind > 0"
-                class="btn btn-info"
+                class="btn-pull"
                 :disabled="processing"
                 @click="pullChanges"
             >
                 <font-awesome-icon icon="download" class="me-1" />
                 {{ $t('pull') }}
+            </button>
+            <button
+                v-if="isGitRepo && hasOutgoingCommits"
+                class="btn-push"
+                :disabled="processing"
+                @click="pushChanges"
+            >
+                <font-awesome-icon icon="upload" class="me-1" />
+                {{ $t('push') }}
             </button>
         </template>
     </BModal>
@@ -329,6 +338,10 @@ export default {
         // The identifier to use for git operations
         gitIdentifier() {
             return this.isDefaultStack ? this.stackName : this.repoName;
+        },
+        // Check if there are outgoing commits to push
+        hasOutgoingCommits() {
+            return (this.gitStatus.outgoingCommits && this.gitStatus.outgoingCommits.length > 0) || this.gitStatus.ahead > 0;
         },
     },
     methods: {
@@ -472,6 +485,25 @@ export default {
 
             const event = this.isDefaultStack ? "gitPull" : "gitPullRepo";
             this.$root.emitAgent(this.endpoint, event, this.gitIdentifier, creds, (res) => {
+                this.processing = false;
+                this.$root.toastRes(res);
+                if (res.ok) {
+                    this.needsCredentials = false;
+                    this.showCredentialsForm = false;
+                    this.loadGitStatus();
+                }
+            });
+        },
+
+        async pushChanges() {
+            this.processing = true;
+
+            const creds = this.credentials.username && this.credentials.password
+                ? this.credentials
+                : null;
+
+            const pushEvent = this.isDefaultStack ? "gitPush" : "gitPushRepo";
+            this.$root.emitAgent(this.endpoint, pushEvent, this.gitIdentifier, creds, (res) => {
                 this.processing = false;
                 this.$root.toastRes(res);
                 if (res.ok) {
@@ -666,5 +698,75 @@ export default {
 
 .dark .credentials-form .card-header {
     background-color: rgba($primary, 0.15);
+}
+
+/* Pull button styling */
+.btn-pull {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: $warning;
+    background-color: transparent;
+    border: 1px solid $warning;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all ease-in-out 0.15s;
+
+    &:hover {
+        background-color: $warning;
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .dark & {
+        color: $warning;
+        border-color: $warning;
+
+        &:hover {
+            background-color: $warning;
+            color: #fff;
+        }
+    }
+}
+
+/* Push button styling */
+.btn-push {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: $primary;
+    background-color: transparent;
+    border: 1px solid $primary;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all ease-in-out 0.15s;
+
+    &:hover {
+        background-color: $primary;
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .dark & {
+        color: $primary;
+        border-color: $primary;
+
+        &:hover {
+            background-color: $primary;
+            color: $dark-font-color2;
+        }
+    }
 }
 </style>

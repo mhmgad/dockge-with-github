@@ -152,6 +152,7 @@
     "unstageFiles": "Unstage Files",
     "commitAndPush": "Commit & Push",
     "pull": "Pull",
+    "push": "Push",
     "close": "Close",
     "gitCredentialsRequired": "Git credentials are required for push/pull operations.",
     "gitCredentials": "Git Credentials",
