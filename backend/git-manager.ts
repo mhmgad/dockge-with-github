@@ -32,6 +32,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             const status: StatusResult = await git.status();
 
+<<<<<<< HEAD
             // Use the files array from status which has detailed per-file information
             // Each file has: path, index (staged status), working_dir (unstaged status)
             const fileList: { path: string; status: string; staged: boolean }[] = [];
@@ -60,6 +61,48 @@ export class GitManager {
             }
 
             const files = fileList;
+=======
+            // Use a Map to deduplicate files by path
+            const fileMap = new Map<string, { path: string; status: string; staged: boolean }>();
+
+            // Unstaged changes
+            for (const file of status.modified) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "M",
+                    staged: false });
+            }
+            for (const file of status.not_added) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "?",
+                    staged: false });
+            }
+            for (const file of status.deleted) {
+                fileMap.set(`unstaged:${file}`, { path: file,
+                    status: "D",
+                    staged: false });
+            }
+
+            // Staged changes (these take priority as separate entries)
+            // Process staged modifications first
+            for (const file of status.staged) {
+                fileMap.set(`staged:${file}`, { path: file,
+                    status: "M",
+                    staged: true });
+            }
+            // Then override with more specific statuses (created files should show as "A" not "M")
+            for (const file of status.created) {
+                fileMap.set(`staged:${file}`, { path: file,
+                    status: "A",
+                    staged: true });
+            }
+            for (const rename of status.renamed) {
+                fileMap.set(`staged:${rename.to}`, { path: `${rename.from} → ${rename.to}`,
+                    status: "R",
+                    staged: true });
+            }
+
+            const files = Array.from(fileMap.values());
+>>>>>>> ff3212b (Feature/git sync on repo (#11))
 
             // Get last commit date
             let lastCommitDate: string | undefined;
@@ -396,6 +439,7 @@ export class GitManager {
             const outgoingCommits: { hash: string; message: string; date: string; author: string }[] = [];
 
             if (!tracking) {
+<<<<<<< HEAD
                 // No tracking branch - try to find one from remote
                 logger.debug("git-manager", "No tracking branch configured");
                 return { incomingCommits, outgoingCommits };
@@ -410,6 +454,18 @@ export class GitManager {
                     const incoming = await git.log([
                         `${currentBranch}..${tracking}`,
                     ]);
+=======
+                return { incomingCommits, outgoingCommits };
+            }
+
+            // Get incoming commits (commits on remote that we don't have)
+            if (status.behind > 0) {
+                try {
+                    const incoming = await git.log({
+                        from: status.current || "HEAD",
+                        to: tracking,
+                    });
+>>>>>>> ff3212b (Feature/git sync on repo (#11))
                     for (const commit of incoming.all) {
                         incomingCommits.push({
                             hash: commit.hash.substring(0, 7),
@@ -419,6 +475,7 @@ export class GitManager {
                         });
                     }
                 } catch (e) {
+<<<<<<< HEAD
                     logger.debug("git-manager", `Could not get incoming commits: ${e}`);
                 }
             }
@@ -439,6 +496,30 @@ export class GitManager {
                 }
             } catch (e) {
                 logger.debug("git-manager", `Could not get outgoing commits: ${e}`);
+=======
+                    logger.warn("git-manager", `Could not get incoming commits: ${e}`);
+                }
+            }
+
+            // Get outgoing commits (commits we have that remote doesn't)
+            if (status.ahead > 0) {
+                try {
+                    const outgoing = await git.log({
+                        from: tracking,
+                        to: status.current || "HEAD",
+                    });
+                    for (const commit of outgoing.all) {
+                        outgoingCommits.push({
+                            hash: commit.hash.substring(0, 7),
+                            message: commit.message,
+                            date: commit.date,
+                            author: commit.author_name,
+                        });
+                    }
+                } catch (e) {
+                    logger.warn("git-manager", `Could not get outgoing commits: ${e}`);
+                }
+>>>>>>> ff3212b (Feature/git sync on repo (#11))
             }
 
             return { incomingCommits, outgoingCommits };
@@ -458,12 +539,17 @@ export class GitManager {
         const status = await this.getStatus(stackPath);
         const remoteDiff = await this.getRemoteDiff(stackPath);
 
+<<<<<<< HEAD
         // Update ahead/behind counts based on actual commits found
         // This is more accurate than relying on git status alone
         return {
             ...status,
             ahead: remoteDiff.outgoingCommits.length || status.ahead,
             behind: remoteDiff.incomingCommits.length || status.behind,
+=======
+        return {
+            ...status,
+>>>>>>> ff3212b (Feature/git sync on repo (#11))
             ...remoteDiff,
         };
     }
