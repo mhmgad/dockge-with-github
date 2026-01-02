@@ -4,7 +4,6 @@
             <Uptime :stack="stack" :fixed-width="true" class="me-2" />
             <div class="title">
                 <span>{{ stackName }}</span>
-                <span v-if="!stack.isManagedByDockge" class="unmanaged-badge">{{ $t("unmanagedStackLabel") }}</span>
                 <div v-if="stack.repo && stack.repo !== 'Default'" class="repo-label">{{ stack.repo }}</div>
                 <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
             </div>
@@ -221,17 +220,6 @@ export default {
     }
     .title {
         margin-top: -4px;
-    }
-    .unmanaged-badge {
-        display: inline-block;
-        font-size: 10px;
-        font-weight: 600;
-        padding: 2px 6px;
-        margin-left: 8px;
-        border-radius: 3px;
-        background-color: $warning;
-        color: #000;
-        text-transform: uppercase;
     }
     .repo-label {
         font-size: 12px;
