@@ -175,12 +175,14 @@ export class Stack {
 
     /**
      * Get the working directory for docker compose commands
-     * For unmanaged stacks, use the directory of the config file
      * For managed stacks, use the stack directory
+     * For unmanaged stacks, use the server's stacks directory (since we use project name to identify the stack)
      */
     get workingDir() : string {
-        if (!this.isManagedByDockge && this._configFilePath) {
-            return path.dirname(this._configFilePath);
+        if (!this.isManagedByDockge) {
+            // For unmanaged stacks, use the server's stacks directory as a safe working directory
+            // Docker Compose will find the stack by project name, not by file location
+            return this.server.stacksDir;
         }
         return this.path;
     }
@@ -501,11 +503,6 @@ export class Stack {
     getComposeOptions(command : string, ...extraOptions : string[]) {
         //--env-file ./../global.env --env-file .env
         let options = [ "compose", command, ...extraOptions ];
-        
-        // For unmanaged stacks, we need to explicitly specify the compose file
-        if (!this.isManagedByDockge && this._configFilePath) {
-            options.splice(1, 0, "-f", this._configFilePath);
-        }
         
         // Only add env files for managed stacks to avoid interfering with unmanaged stack configuration
         if (this.isManagedByDockge && fs.existsSync(path.join(this.server.stacksDir, "global.env"))) {
