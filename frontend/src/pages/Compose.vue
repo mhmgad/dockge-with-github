@@ -370,6 +370,7 @@ export default {
             showDownUnmanagedDialog: false,
             newContainerName: "",
             stopServiceStatusTimeout: false,
+            EXITED: EXITED,  // Expose EXITED constant to template
         };
     },
     computed: {
