@@ -1,6 +1,6 @@
 import { simpleGit, SimpleGit, StatusResult } from "simple-git";
 import { Settings } from "./settings";
-import { log } from "./log";
+import { log as logger } from "./log";
 
 export interface GitCredentials {
     username: string;
@@ -17,6 +17,7 @@ export interface GitStatusResponse {
     tracking: string | null;
     ahead: number;
     behind: number;
+    lastCommitDate?: string;
 }
 
 export class GitManager {
@@ -31,26 +32,46 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             const status: StatusResult = await git.status();
 
-            const files = [
-                ...status.modified.map(file => ({ path: file,
-                    status: "modified",
-                    staged: false })),
-                ...status.not_added.map(file => ({ path: file,
-                    status: "untracked",
-                    staged: false })),
-                ...status.created.map(file => ({ path: file,
-                    status: "new file",
-                    staged: true })),
-                ...status.deleted.map(file => ({ path: file,
-                    status: "deleted",
-                    staged: false })),
-                ...status.renamed.map(file => ({ path: file.to,
-                    status: "renamed",
-                    staged: true })),
-                ...status.staged.map(file => ({ path: file,
-                    status: "staged",
-                    staged: true })),
-            ];
+            // Use the files array from status which has detailed per-file information
+            // Each file has: path, index (staged status), working_dir (unstaged status)
+            const fileList: { path: string; status: string; staged: boolean }[] = [];
+
+            for (const file of status.files) {
+                const indexStatus = file.index; // Staged status: M, A, D, R, ?, " "
+                const workdirStatus = file.working_dir; // Unstaged status: M, D, ?, " "
+
+                // Add staged entry if there's a staged change
+                if (indexStatus && indexStatus !== " " && indexStatus !== "?") {
+                    fileList.push({
+                        path: file.path,
+                        status: indexStatus,
+                        staged: true,
+                    });
+                }
+
+                // Add unstaged entry if there's an unstaged change
+                if (workdirStatus && workdirStatus !== " ") {
+                    fileList.push({
+                        path: file.path,
+                        status: workdirStatus,
+                        staged: false,
+                    });
+                }
+            }
+
+            const files = fileList;
+
+            // Get last commit date
+            let lastCommitDate: string | undefined;
+            try {
+                const gitLog = await git.log({ maxCount: 1 });
+                if (gitLog.latest) {
+                    lastCommitDate = gitLog.latest.date;
+                }
+            } catch (e) {
+                // Ignore errors getting last commit date
+                logger.warn("git-manager", `Could not get last commit date: ${e}`);
+            }
 
             return {
                 files,
@@ -58,9 +79,10 @@ export class GitManager {
                 tracking: status.tracking || null,
                 ahead: status.ahead,
                 behind: status.behind,
+                lastCommitDate,
             };
         } catch (error) {
-            log.error("git-manager", `Error getting git status: ${error}`);
+            logger.error("git-manager", `Error getting git status: ${error}`);
             throw error;
         }
     }
@@ -75,7 +97,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.add(files);
         } catch (error) {
-            log.error("git-manager", `Error adding files: ${error}`);
+            logger.error("git-manager", `Error adding files: ${error}`);
             throw error;
         }
     }
@@ -90,7 +112,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.reset([ "--", ...files ]);
         } catch (error) {
-            log.error("git-manager", `Error unstaging files: ${error}`);
+            logger.error("git-manager", `Error unstaging files: ${error}`);
             throw error;
         }
     }
@@ -105,7 +127,7 @@ export class GitManager {
             const git: SimpleGit = simpleGit(gitRoot);
             await git.commit(message);
         } catch (error) {
-            log.error("git-manager", `Error committing changes: ${error}`);
+            logger.error("git-manager", `Error committing changes: ${error}`);
             throw error;
         }
     }
@@ -132,7 +154,7 @@ export class GitManager {
 
             await git.push();
         } catch (error) {
-            log.error("git-manager", `Error pushing changes: ${error}`);
+            logger.error("git-manager", `Error pushing changes: ${error}`);
             throw error;
         } finally {
             // Restore original remote URL if it was modified
@@ -140,7 +162,7 @@ export class GitManager {
                 try {
                     await git.remote([ "set-url", "origin", originalRemoteUrl ]);
                 } catch (e) {
-                    log.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
                 }
             }
         }
@@ -166,9 +188,10 @@ export class GitManager {
                 await this.configureCredentials(gitRoot, credentials);
             }
 
-            await git.pull();
+            // Use --no-rebase to merge divergent branches (creates a merge commit)
+            await git.pull([ "--no-rebase" ]);
         } catch (error) {
-            log.error("git-manager", `Error pulling changes: ${error}`);
+            logger.error("git-manager", `Error pulling changes: ${error}`);
             throw error;
         } finally {
             // Restore original remote URL if it was modified
@@ -176,7 +199,7 @@ export class GitManager {
                 try {
                     await git.remote([ "set-url", "origin", originalRemoteUrl ]);
                 } catch (e) {
-                    log.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
                 }
             }
         }
@@ -203,7 +226,7 @@ export class GitManager {
 
         // Only handle HTTPS URLs, skip SSH URLs
         if (!remoteUrl.startsWith("http://") && !remoteUrl.startsWith("https://")) {
-            log.warn("git-manager", "SSH URLs are not supported for credential injection. Please configure SSH keys separately.");
+            logger.warn("git-manager", "SSH URLs are not supported for credential injection. Please configure SSH keys separately.");
             return;
         }
 
@@ -216,7 +239,7 @@ export class GitManager {
             // Set the remote URL with credentials temporarily (for this operation only)
             await git.remote([ "set-url", "origin", url.toString() ]);
         } catch (error) {
-            log.error("git-manager", `Error configuring credentials: ${error}`);
+            logger.error("git-manager", `Error configuring credentials: ${error}`);
             throw new Error("Failed to configure git credentials. Please check the remote URL format.");
         }
     }
@@ -258,7 +281,7 @@ export class GitManager {
             const result = await git.revparse([ "--show-toplevel" ]);
             return result.trim();
         } catch (error) {
-            log.error("git-manager", `Error finding git root from ${stackPath}: ${error}`);
+            logger.error("git-manager", `Error finding git root from ${stackPath}: ${error}`);
             throw new Error(`Unable to find git repository root. The path '${stackPath}' may not be inside a git repository.`);
         }
     }
@@ -276,6 +299,173 @@ export class GitManager {
         } catch (error) {
             return false;
         }
+    }
+
+    /**
+     * Get basic git info for display in list view
+     * Returns isGitRepo flag, lastCommitDate, ahead/behind counts
+     */
+    static async getBasicInfo(stackPath: string): Promise<{ isGitRepo: boolean; lastCommitDate?: string; ahead?: number; behind?: number }> {
+        try {
+            const isGitRepo = await this.isGitRepository(stackPath);
+            if (!isGitRepo) {
+                return { isGitRepo: false };
+            }
+
+            const gitRoot = await this.getGitRoot(stackPath);
+            const git: SimpleGit = simpleGit(gitRoot);
+
+            // Get last commit date
+            let lastCommitDate: string | undefined;
+            try {
+                const gitLog = await git.log({ maxCount: 1 });
+                if (gitLog.latest) {
+                    lastCommitDate = gitLog.latest.date;
+                }
+            } catch (e) {
+                logger.warn("git-manager", `Could not get last commit date: ${e}`);
+            }
+
+            // Get ahead/behind counts
+            let ahead = 0;
+            let behind = 0;
+            try {
+                const status = await git.status();
+                ahead = status.ahead;
+                behind = status.behind;
+            } catch (e) {
+                logger.warn("git-manager", `Could not get ahead/behind counts: ${e}`);
+            }
+
+            return { isGitRepo: true,
+                lastCommitDate,
+                ahead,
+                behind };
+        } catch (error) {
+            return { isGitRepo: false };
+        }
+    }
+
+    /**
+     * Fetch from remote to update tracking information
+     */
+    static async fetch(stackPath: string, credentials?: GitCredentials): Promise<void> {
+        const gitRoot = await this.getGitRoot(stackPath);
+        const git: SimpleGit = simpleGit(gitRoot);
+        let originalRemoteUrl: string | null = null;
+
+        try {
+            if (credentials) {
+                const remotes = await git.getRemotes(true);
+                if (remotes.length > 0) {
+                    originalRemoteUrl = remotes[0].refs.push || remotes[0].refs.fetch;
+                }
+                await this.configureCredentials(gitRoot, credentials);
+            }
+
+            await git.fetch();
+        } catch (error) {
+            logger.error("git-manager", `Error fetching: ${error}`);
+            throw error;
+        } finally {
+            if (originalRemoteUrl && credentials) {
+                try {
+                    await git.remote([ "set-url", "origin", originalRemoteUrl ]);
+                } catch (e) {
+                    logger.warn("git-manager", `Could not restore original remote URL: ${e}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Get remote diff - shows commits that are ahead/behind
+     */
+    static async getRemoteDiff(stackPath: string): Promise<{
+        incomingCommits: { hash: string; message: string; date: string; author: string }[];
+        outgoingCommits: { hash: string; message: string; date: string; author: string }[];
+    }> {
+        try {
+            const gitRoot = await this.getGitRoot(stackPath);
+            const git: SimpleGit = simpleGit(gitRoot);
+
+            const status = await git.status();
+            const tracking = status.tracking;
+
+            const incomingCommits: { hash: string; message: string; date: string; author: string }[] = [];
+            const outgoingCommits: { hash: string; message: string; date: string; author: string }[] = [];
+
+            if (!tracking) {
+                // No tracking branch - try to find one from remote
+                logger.debug("git-manager", "No tracking branch configured");
+                return { incomingCommits, outgoingCommits };
+            }
+
+            const currentBranch = status.current || "HEAD";
+
+            // Get incoming commits (commits on remote tracking branch that we don't have locally)
+            // Range: HEAD..tracking means "commits reachable from tracking but not from HEAD"
+            if (status.behind > 0) {
+                try {
+                    const incoming = await git.log([
+                        `${currentBranch}..${tracking}`,
+                    ]);
+                    for (const commit of incoming.all) {
+                        incomingCommits.push({
+                            hash: commit.hash.substring(0, 7),
+                            message: commit.message,
+                            date: commit.date,
+                            author: commit.author_name,
+                        });
+                    }
+                } catch (e) {
+                    logger.debug("git-manager", `Could not get incoming commits: ${e}`);
+                }
+            }
+
+            // Get outgoing commits (commits we have locally that remote doesn't have)
+            // Range: tracking..HEAD means "commits reachable from HEAD but not from tracking"
+            try {
+                const outgoing = await git.log([
+                    `${tracking}..${currentBranch}`,
+                ]);
+                for (const commit of outgoing.all) {
+                    outgoingCommits.push({
+                        hash: commit.hash.substring(0, 7),
+                        message: commit.message,
+                        date: commit.date,
+                        author: commit.author_name,
+                    });
+                }
+            } catch (e) {
+                logger.debug("git-manager", `Could not get outgoing commits: ${e}`);
+            }
+
+            return { incomingCommits, outgoingCommits };
+        } catch (error) {
+            logger.error("git-manager", `Error getting remote diff: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Get git status for a repo by repo name (operates at git root level)
+     */
+    static async getRepoStatus(stackPath: string): Promise<GitStatusResponse & {
+        incomingCommits: { hash: string; message: string; date: string; author: string }[];
+        outgoingCommits: { hash: string; message: string; date: string; author: string }[];
+    }> {
+        const status = await this.getStatus(stackPath);
+        const remoteDiff = await this.getRemoteDiff(stackPath);
+
+        // Update ahead/behind counts based on actual commits found
+        // This is more accurate than relying on git status alone
+        return {
+            ...status,
+            ahead: remoteDiff.outgoingCommits.length || status.ahead,
+            behind: remoteDiff.incomingCommits.length || status.behind,
+            ...remoteDiff,
+        };
     }
 
     /**
@@ -305,9 +495,9 @@ export class GitManager {
                 await clonedGit.remote([ "set-url", "origin", repoUrl ]);
             }
 
-            log.info("git-manager", `Repository cloned successfully to ${targetPath}`);
+            logger.info("git-manager", `Repository cloned successfully to ${targetPath}`);
         } catch (error) {
-            log.error("git-manager", `Error cloning repository: ${error}`);
+            logger.error("git-manager", `Error cloning repository: ${error}`);
             throw error;
         }
     }

@@ -49,9 +49,27 @@
 
             <div v-for="(repoStacks, repoName) in groupedStackList" :key="repoName" class="repo-group">
                 <div class="repo-header">
-                    <font-awesome-icon icon="folder" class="me-2" />
-                    <span class="repo-name">{{ repoName }}</span>
-                    <span class="stack-count">({{ repoStacks.length }})</span>
+                    <div class="repo-header-left">
+                        <font-awesome-icon icon="folder" class="me-2" />
+                        <span class="repo-name">{{ repoName }}</span>
+                        <span class="stack-count">({{ repoStacks.length }})</span>
+                    </div>
+                    <div v-if="repoName !== 'Default' && repoName !== 'Unmanaged'" class="repo-header-right">
+                        <span v-if="repoGitInfo[repoName]?.lastSyncTime" class="last-sync-time">
+                            <font-awesome-icon icon="clock" class="me-1" />
+                            {{ formatSyncTime(repoGitInfo[repoName].lastSyncTime) }}
+                        </span>
+                        <button
+                            v-if="repoGitInfo[repoName]?.isGitRepo"
+                            class="btn-git-sync"
+                            :disabled="repoGitInfo[repoName]?.processing"
+                            :title="$t('gitSync')"
+                            @click.stop="openGitSync(repoName, repoStacks[0])"
+                        >
+                            <font-awesome-icon icon="sync" class="me-1" />
+                            <span class="btn-text">{{ $t('gitSync') }}</span>
+                        </button>
+                    </div>
                 </div>
                 <StackListItem
                     v-for="(item, index) in repoStacks"
@@ -61,6 +79,9 @@
                     :isSelected="isSelected"
                     :select="select"
                     :deselect="deselect"
+                    :isGitRepo="stackGitInfo[item.name]?.isGitRepo || false"
+                    :lastSyncTime="stackGitInfo[item.name]?.lastSyncTime || ''"
+                    @open-git-sync="openStackGitSync"
                 />
             </div>
         </div>
@@ -69,17 +90,26 @@
     <Confirm ref="confirmPause" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="pauseSelected">
         {{ $t("pauseStackMsg") }}
     </Confirm>
+
+    <GitStatusModal
+        ref="gitStatusModal"
+        :repo-name="selectedRepoName"
+        :endpoint="selectedRepoEndpoint"
+        :stack-name="selectedStackName"
+    />
 </template>
 
 <script>
 import Confirm from "../components/Confirm.vue";
 import StackListItem from "../components/StackListItem.vue";
+import GitStatusModal from "../components/GitStatusModal.vue";
 import { CREATED_FILE, CREATED_STACK, EXITED, RUNNING, UNKNOWN } from "../../../common/util-common";
 
 export default {
     components: {
         Confirm,
         StackListItem,
+        GitStatusModal,
     },
     props: {
         /** Should the scrollbar be shown */
@@ -99,7 +129,12 @@ export default {
                 status: null,
                 active: null,
                 tags: null,
-            }
+            },
+            repoGitInfo: {},
+            stackGitInfo: {},
+            selectedRepoName: "",
+            selectedRepoEndpoint: "",
+            selectedStackName: "",
         };
     },
     computed: {
@@ -135,7 +170,7 @@ export default {
                 let searchTextMatch = true;
                 if (this.searchText !== "") {
                     const loweredSearchText = this.searchText.toLowerCase();
-                    const repoName = stack.repo || "local";
+                    const repoName = stack.repo || "Default";
                     searchTextMatch =
                         stack.name.toLowerCase().includes(loweredSearchText)
                         || repoName.toLowerCase().includes(loweredSearchText)
@@ -201,13 +236,21 @@ export default {
 
         /**
          * Groups the sorted stack list by repo (parent folder).
+         * Unmanaged stacks are grouped separately under "Unmanaged".
          * @returns {Object} Object with repo names as keys and arrays of stacks as values.
          */
         groupedStackList() {
             const groups = {};
 
             for (const stack of this.sortedStackList) {
-                const repoName = stack.repo || "local";
+                let repoName;
+                
+                // Group unmanaged stacks separately
+                if (!stack.isManagedByDockge) {
+                    repoName = "Unmanaged";
+                } else {
+                    repoName = stack.repo || "Default";
+                }
 
                 if (!groups[repoName]) {
                     groups[repoName] = [];
@@ -216,13 +259,19 @@ export default {
                 groups[repoName].push(stack);
             }
 
-            // Sort repo names, with "local" always first
+            // Sort repo names: "Default" first, then alphabetically, then "Unmanaged" last
             const sortedRepos = Object.keys(groups).sort((a, b) => {
-                if (a === "local") {
+                if (a === "Default") {
                     return -1;
                 }
-                if (b === "local") {
+                if (b === "Default") {
                     return 1;
+                }
+                if (a === "Unmanaged") {
+                    return 1;
+                }
+                if (b === "Unmanaged") {
+                    return -1;
                 }
                 return a.localeCompare(b);
             });
@@ -295,6 +344,13 @@ export default {
                 this.selectAll = false;
                 this.selectedStacks = {};
             }
+        },
+        groupedStackList: {
+            handler() {
+                // Fetch git info for all repos when the list changes
+                this.fetchAllRepoGitInfo();
+            },
+            immediate: true,
         },
     },
     mounted() {
@@ -391,6 +447,146 @@ export default {
                 .forEach(id => this.$root.getSocket().emit("resumeStack", id, () => {}));
 
             this.cancelSelectMode();
+        },
+        /**
+         * Fetch git info for all repos
+         * @returns {void}
+         */
+        fetchAllRepoGitInfo() {
+            for (const repoName of Object.keys(this.groupedStackList)) {
+                this.fetchRepoGitInfo(repoName);
+            }
+        },
+        /**
+         * Fetch git info for a specific repo
+         * @param {string} repoName - Name of the repo
+         * @returns {void}
+         */
+        fetchRepoGitInfo(repoName) {
+            if (!repoName) {
+                return;
+            }
+
+            const stacks = this.groupedStackList[repoName];
+            if (!stacks || stacks.length === 0) {
+                return;
+            }
+
+            // For Default stacks, check each stack individually
+            if (repoName === "Default") {
+                this.fetchDefaultStacksGitInfo(stacks);
+                return;
+            }
+
+            const endpoint = stacks[0].endpoint || "";
+
+            this.$root.emitAgent(endpoint, "getRepoGitInfo", repoName, (res) => {
+                if (res.ok && res.gitInfo) {
+                    this.repoGitInfo[repoName] = {
+                        isGitRepo: res.gitInfo.isGitRepo,
+                        lastSyncTime: res.gitInfo.lastCommitDate,
+                        ahead: res.gitInfo.ahead || 0,
+                        behind: res.gitInfo.behind || 0,
+                        processing: false,
+                        gitRepoStackName: stacks[0].name,
+                    };
+                }
+            });
+        },
+        /**
+         * Fetch git info for Default stacks (each could be its own git repo)
+         * @param {Array} stacks - Array of stacks in the Default group
+         * @returns {void}
+         */
+        fetchDefaultStacksGitInfo(stacks) {
+            for (const stack of stacks) {
+                const endpoint = stack.endpoint || "";
+
+                this.$root.emitAgent(endpoint, "getStackGitInfo", stack.name, (res) => {
+                    if (res.ok && res.gitInfo) {
+                        this.stackGitInfo[stack.name] = {
+                            isGitRepo: res.gitInfo.isGitRepo,
+                            lastSyncTime: res.gitInfo.lastCommitDate,
+                            ahead: res.gitInfo.ahead || 0,
+                            behind: res.gitInfo.behind || 0,
+                            processing: false,
+                        };
+                    }
+                });
+            }
+        },
+        /**
+         * Format the sync time for display
+         * @param {string} timestamp - ISO timestamp
+         * @returns {string} Formatted time
+         */
+        formatSyncTime(timestamp) {
+            if (!timestamp) {
+                return "";
+            }
+
+            const MINUTE_MS = 60000;
+            const HOUR_MS = 3600000;
+            const DAY_MS = 86400000;
+
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / MINUTE_MS);
+            const diffHours = Math.floor(diffMs / HOUR_MS);
+            const diffDays = Math.floor(diffMs / DAY_MS);
+
+            if (diffMins < 1) {
+                return this.$t("justNow") || "Just now";
+            } else if (diffMins < 60) {
+                return `${diffMins}m ago`;
+            } else if (diffHours < 24) {
+                return `${diffHours}h ago`;
+            } else if (diffDays < 7) {
+                return `${diffDays}d ago`;
+            } else {
+                return date.toLocaleDateString();
+            }
+        },
+        /**
+         * Open Git Sync modal for a repo
+         * @param {string} repoName - Name of the repo
+         * @param {object} sampleStack - A stack from the repo (to get endpoint)
+         * @returns {void}
+         */
+        openGitSync(repoName, sampleStack) {
+            if (!repoName || !sampleStack) {
+                return;
+            }
+
+            this.selectedRepoName = repoName;
+            this.selectedRepoEndpoint = sampleStack.endpoint || "";
+            this.selectedStackName = "";
+
+            // Use nextTick to ensure props are updated before opening
+            this.$nextTick(() => {
+                this.$refs.gitStatusModal.open();
+            });
+        },
+
+        /**
+         * Open Git Sync modal for a specific stack (used for Default stacks)
+         * @param {object} stack - The stack to open git sync for
+         * @returns {void}
+         */
+        openStackGitSync(stack) {
+            if (!stack) {
+                return;
+            }
+
+            this.selectedRepoName = "Default";
+            this.selectedRepoEndpoint = stack.endpoint || "";
+            this.selectedStackName = stack.name;
+
+            // Use nextTick to ensure props are updated before opening
+            this.$nextTick(() => {
+                this.$refs.gitStatusModal.open();
+            });
         },
     },
 };
@@ -497,6 +693,7 @@ export default {
 .repo-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 8px 12px;
     font-weight: 600;
     font-size: 14px;
@@ -510,14 +707,68 @@ export default {
         background-color: rgba(255, 255, 255, 0.05);
     }
 
-    .repo-name {
-        flex-grow: 1;
+    .repo-header-left {
+        display: flex;
+        align-items: center;
+    }
+
+    .repo-header-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
     }
 
     .stack-count {
         font-size: 12px;
         opacity: 0.7;
-        margin-left: 8px;
+        margin-left: 4px;
+    }
+
+    .last-sync-time {
+        font-size: 12px;
+        opacity: 0.8;
+        font-weight: 400;
+        white-space: nowrap;
+    }
+}
+
+.btn-git-sync {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: $primary;
+    background-color: transparent;
+    border: 1px solid $primary;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all ease-in-out 0.15s;
+    white-space: nowrap;
+
+    &:hover {
+        background-color: $primary;
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .dark & {
+        color: $primary;
+        border-color: $primary;
+
+        &:hover {
+            background-color: $primary;
+            color: $dark-font-color2;
+        }
+    }
+
+    .btn-text {
+        margin-left: 2px;
     }
 }
 
