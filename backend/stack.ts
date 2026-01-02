@@ -174,6 +174,20 @@ export class Stack {
     }
 
     /**
+     * Get the working directory for docker compose commands
+     * For managed stacks, use the stack directory
+     * For unmanaged stacks, use the server's stacks directory (since we use project name to identify the stack)
+     */
+    get workingDir() : string {
+        if (!this.isManagedByDockge) {
+            // For unmanaged stacks, use the server's stacks directory as a safe working directory
+            // Docker Compose will find the stack by project name, not by file location
+            return this.server.stacksDir;
+        }
+        return this.path;
+    }
+
+    /**
      * Get the repo name (parent folder) for this stack
      * If the stack is in the root directory, return "Default"
      */
@@ -489,7 +503,9 @@ export class Stack {
     getComposeOptions(command : string, ...extraOptions : string[]) {
         //--env-file ./../global.env --env-file .env
         let options = [ "compose", command, ...extraOptions ];
-        if (fs.existsSync(path.join(this.server.stacksDir, "global.env"))) {
+        
+        // Only add env files for managed stacks to avoid interfering with unmanaged stack configuration
+        if (this.isManagedByDockge && fs.existsSync(path.join(this.server.stacksDir, "global.env"))) {
             if (fs.existsSync(path.join(this.path, ".env"))) {
                 options.splice(1, 0, "--env-file", "./.env");
             }
@@ -520,7 +536,7 @@ export class Stack {
 
     async stop(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("stop"), this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("stop"), this.workingDir);
         if (exitCode !== 0) {
             throw new Error("Failed to stop, please check the terminal output for more information.");
         }
@@ -538,7 +554,7 @@ export class Stack {
 
     async down(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("down"), this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("down"), this.workingDir);
         if (exitCode !== 0) {
             throw new Error("Failed to down, please check the terminal output for more information.");
         }

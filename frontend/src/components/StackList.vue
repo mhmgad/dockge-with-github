@@ -54,7 +54,7 @@
                         <span class="repo-name">{{ repoName }}</span>
                         <span class="stack-count">({{ repoStacks.length }})</span>
                     </div>
-                    <div v-if="repoName !== 'Default'" class="repo-header-right">
+                    <div v-if="repoName !== 'Default' && repoName !== 'Unmanaged'" class="repo-header-right">
                         <span v-if="repoGitInfo[repoName]?.lastSyncTime" class="last-sync-time">
                             <font-awesome-icon icon="clock" class="me-1" />
                             {{ formatSyncTime(repoGitInfo[repoName].lastSyncTime) }}
@@ -236,13 +236,21 @@ export default {
 
         /**
          * Groups the sorted stack list by repo (parent folder).
+         * Unmanaged stacks are grouped separately under "Unmanaged".
          * @returns {Object} Object with repo names as keys and arrays of stacks as values.
          */
         groupedStackList() {
             const groups = {};
 
             for (const stack of this.sortedStackList) {
-                const repoName = stack.repo || "Default";
+                let repoName;
+                
+                // Group unmanaged stacks separately
+                if (!stack.isManagedByDockge) {
+                    repoName = "Unmanaged";
+                } else {
+                    repoName = stack.repo || "Default";
+                }
 
                 if (!groups[repoName]) {
                     groups[repoName] = [];
@@ -251,13 +259,19 @@ export default {
                 groups[repoName].push(stack);
             }
 
-            // Sort repo names, with "Default" always first
+            // Sort repo names: "Default" first, then alphabetically, then "Unmanaged" last
             const sortedRepos = Object.keys(groups).sort((a, b) => {
                 if (a === "Default") {
                     return -1;
                 }
                 if (b === "Default") {
                     return 1;
+                }
+                if (a === "Unmanaged") {
+                    return 1;
+                }
+                if (b === "Unmanaged") {
+                    return -1;
                 }
                 return a.localeCompare(b);
             });
