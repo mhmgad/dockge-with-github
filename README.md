@@ -17,61 +17,44 @@ View Video: https://youtu.be/AWAlOQeNpgU?t=48
 ## ⭐ Features
 
 ### Enhanced Features in This Fork
-- 🔀 **Git Integration** - Full Git integration for managing stacks with version control:
+
+- 🔀 **GitHub Repository Management** - Full Git/GitHub integration for managing stacks with version control:
   - Check git status (branch, changed files, commits ahead/behind)
-  - Add files to staging
+  - Add files to staging area
   - Commit staged changes with custom messages
-  - Push changes to remote repositories
-  - Pull changes from remote repositories
-  - Clone GitHub repositories to create new stacks
-  - Support for both public and private repositories (with credential management)
-- 📦 **Unmanaged Stack Support** - Manage Docker Compose stacks that weren't created by Dockge:
-  - View and monitor external Docker Compose stacks
-  - Stop and start unmanaged stacks
-  - Separate grouping for managed vs. unmanaged stacks
-  - Full control over existing Docker Compose deployments
+  - Push and pull changes to/from remote repositories
+  - Clone GitHub repositories (public or private) to create new stacks
+  - Secure credential management for private repositories
+  
+- 📁 **Nested Folder Support with Grouping** - Organize stacks in nested folders with automatic grouping:
+  - Create stacks in nested directories (e.g., `/opt/stacks/homeserver/plex`, `/opt/stacks/homeserver/jellyfin`)
+  - Automatic grouping by parent folder in the UI
+  - Example: A `homeserver` folder containing `plex` and `jellyfin` subfolders will show as a "homeserver" group with 2 stacks
+  - Git sync button at the folder/group level for batch operations
+  
+- 📦 **Unmanaged Stack Support** - View and control Docker Compose stacks not created by Dockge:
+  - Automatically discover running Docker Compose stacks on the system
+  - View status and container information for unmanaged stacks
+  - Stop unmanaged stacks (via `docker compose stop` or `docker compose down`)
+  - Separate "Unmanaged" group in the stack list for clear distinction
+  - Note: Cannot start, restart, or edit unmanaged stacks (they remain read-only except for stop operations)
 
 ### Core Features (from upstream)
+
 - 🧑‍💼 Manage your `compose.yaml` files
   - Create/Edit/Start/Stop/Restart/Delete
   - Update Docker Images
 - ⌨️ Interactive Editor for `compose.yaml`
 - 🦦 Interactive Web Terminal
-- 🕷️ (1.4.0 🆕) Multiple agents support - You can manage multiple stacks from different Docker hosts in one single interface
+- 🕷️ Multiple agents support - Manage stacks from different Docker hosts in one interface
 - 🏪 Convert `docker run ...` commands into `compose.yaml`
-- 📙 File based structure - Dockge won't kidnap your compose files, they are stored on your drive as usual. You can interact with them using normal `docker compose` commands
+- 📙 File based structure - Compose files stored on your drive, interact with normal `docker compose` commands
+- 🚄 Reactive - Real-time progress and terminal output
+- 🐣 Easy-to-use & fancy UI - If you love Uptime Kuma's UI/UX, you will love this one too
 
 <img src="https://github.com/louislam/dockge/assets/1336778/cc071864-592e-4909-b73a-343a57494002" width=300 />
 
-### Additional Features in This Fork
-- 🚄 Reactive - Everything is just responsive. Progress (Pull/Up/Down) and terminal output are in real-time
-- 🐣 Easy-to-use & fancy UI - If you love Uptime Kuma's UI/UX, you will love this one too
-
 ![](https://github.com/louislam/dockge/assets/1336778/89fc1023-b069-42c0-a01c-918c495f1a6a)
-
-## 🔄 Differences from Upstream
-
-This fork extends the original [louislam/dockge](https://github.com/louislam/dockge) with the following enhancements:
-
-### 1. Git/GitHub Integration
-The original Dockge does not include any Git integration features. This fork adds comprehensive Git support:
-- **Git Status Management**: View repository status, staged/unstaged files, and commit history
-- **Clone Repositories**: Create new stacks by cloning Git repositories (HTTPS/SSH)
-- **Version Control Operations**: Add, commit, push, and pull changes directly from the UI
-- **Credential Management**: Securely store GitHub credentials for private repositories
-- **Visual Git Interface**: User-friendly modal dialogs for all Git operations
-
-### 2. Unmanaged Stack Support
-The original Dockge only manages stacks it creates within its stacks directory. This fork extends support to:
-- **Discover External Stacks**: Automatically detect Docker Compose stacks running on the system
-- **Manage Unmanaged Stacks**: Stop, start, and monitor stacks not created by Dockge
-- **Separate Grouping**: Visual distinction between managed and unmanaged stacks
-- **Safe Operations**: Carefully handle external stacks without modifying their configuration files
-
-These features make this fork ideal for environments where:
-- You want to version control your Docker Compose configurations
-- You work with Git/GitHub-based infrastructure workflows
-- You need to manage existing Docker Compose deployments alongside new ones
 
 ## 🔧 How to Install
 
@@ -209,14 +192,14 @@ For more development details, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Motivations
 
-### Original Dockge Motivations (by Louis Lam)
-- I have been using Portainer for some time, but for the stack management, I am sometimes not satisfied with it. For example, sometimes when I try to deploy a stack, the loading icon keeps spinning for a few minutes without progress. And sometimes error messages are not clear.
-- Try to develop with ES Module + TypeScript
+### Original Dockge (by Louis Lam)
+- Portainer's stack management can be frustrating with unclear error messages and slow deployments
+- Desire to develop with ES Module + TypeScript
 
-### This Fork's Additional Motivations
-- **Git Integration**: Many DevOps workflows rely on Git for infrastructure-as-code. Having Git operations directly in the Dockge UI streamlines the workflow for managing Docker Compose files in version control.
-- **Unmanaged Stack Support**: In real-world scenarios, systems often have Docker Compose stacks that predate Dockge or were created through other means. Being able to manage these alongside Dockge-created stacks provides a complete view of the system.
-- **GitHub-Centric Workflows**: Supporting repository cloning and credential management makes it easy to deploy stacks directly from GitHub repositories.
+### This Fork's Additions
+- **GitOps Workflows**: Many teams use Git for infrastructure-as-code; having Git operations in the UI streamlines Docker Compose management
+- **Nested Organization**: Real deployments often have logical groupings (e.g., media server, home automation, development) that benefit from folder-based organization
+- **Complete System View**: Systems often have pre-existing Docker Compose stacks; this fork lets you monitor and control all stacks in one place
 
 If you love this project, please consider giving it a ⭐.
 
