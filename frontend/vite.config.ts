@@ -33,4 +33,12 @@ export default defineConfig({
             filter: viteCompressionFilter,
         }),
     ],
+    css: {
+        preprocessorOptions: {
+            scss: {
+                quietDeps: true,
+                silenceDeprecations: [ "import", "global-builtin", "color-functions", "if-function" ],
+            },
+        },
+    },
 });
