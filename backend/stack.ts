@@ -94,7 +94,7 @@ export class Stack {
      * Get the status of the stack from `docker compose ps --format json`
      */
     async ps() : Promise<object> {
-        let res = await childProcessAsync.spawn("docker", [ "compose", "ps", "--format", "json" ], {
+        let res = await childProcessAsync.spawn("docker", this.getComposeOptions("ps", "--format", "json"), {
             cwd: this.path,
             encoding: "utf-8",
         });
@@ -174,17 +174,32 @@ export class Stack {
     }
 
     /**
+     * Get the working directory for docker compose commands
+     * For managed stacks, use the stack directory
+     * For unmanaged stacks, use the server's stacks directory (since we use project name to identify the stack)
+     */
+    get workingDir() : string {
+        if (!this.isManagedByDockge) {
+            // For unmanaged stacks, use the server's stacks directory as a safe working directory
+            // Docker Compose will find the stack by project name, not by file location
+            return this.server.stacksDir;
+        }
+        return this.path;
+    }
+
+    /**
      * Get the repo name (parent folder) for this stack
-     * If the stack is in the root directory, return "local"
+     * If the stack is in the root directory, return "Default"
      */
     get repo() : string {
-        const parts = this.name.split(path.sep);
+        // Stack names always use forward slashes regardless of OS
+        const parts = this.name.split("/");
         if (parts.length > 1) {
             // Stack is in a subdirectory, return the parent folder name
             return parts[0];
         }
         // Stack is in the root directory
-        return "local";
+        return "Default";
     }
 
     /**
@@ -224,7 +239,7 @@ export class Stack {
 
     async deploy(socket : DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to deploy, please check the terminal output for more information.");
         }
@@ -233,7 +248,7 @@ export class Stack {
 
     async delete(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("down", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to delete, please check the terminal output for more information.");
         }
@@ -363,8 +378,34 @@ export class Stack {
 
         let composeList = JSON.parse(res.stdout.toString());
 
+        // TODO make it based on manually set labels
+
         for (let composeStack of composeList) {
-            let stack = stackList.get(composeStack.Name);
+            let stack: Stack | undefined;
+
+            // Prioritize matching by config file path if the config file is in the stacks directory
+            // This is more reliable than matching by name, since Docker Compose uses directory name
+            // as project name, which can conflict with stacks in subdirectories
+            if (composeStack.ConfigFiles) {
+                const configPath = composeStack.ConfigFiles;
+                // Normalize both paths for comparison (resolve to absolute paths and normalize separators)
+                const normalizedStacksDir = path.resolve(stacksDir);
+                const normalizedConfigPath = path.resolve(configPath);
+                // Check if the config file is in the stacks directory
+                if (normalizedConfigPath.startsWith(normalizedStacksDir + path.sep) || normalizedConfigPath === normalizedStacksDir) {
+                    // Get the relative path from stacksDir to the directory containing the compose file
+                    const relativePath = path.relative(normalizedStacksDir, path.dirname(normalizedConfigPath));
+                    // Normalize path separators to use forward slashes (consistent with how stack names are stored)
+                    const normalizedPath = relativePath.split(path.sep).join("/");
+                    stack = stackList.get(normalizedPath);
+                }
+            }
+
+            // If not found by config file path, try to match by name
+            // This handles stacks not managed by Dockge or stacks outside the stacks directory
+            if (!stack) {
+                stack = stackList.get(composeStack.Name);
+            }
 
             // This stack probably is not managed by Dockge, but we still want to show it
             if (!stack) {
@@ -459,9 +500,34 @@ export class Stack {
         return stack;
     }
 
+    getComposeOptions(command : string, ...extraOptions : string[]) {
+        //--env-file ./../global.env --env-file .env
+        let options = [ "compose", command, ...extraOptions ];
+        
+        // Only add env files for managed stacks to avoid interfering with unmanaged stack configuration
+        if (this.isManagedByDockge && fs.existsSync(path.join(this.server.stacksDir, "global.env"))) {
+            if (fs.existsSync(path.join(this.path, ".env"))) {
+                options.splice(1, 0, "--env-file", "./.env");
+            }
+            options.splice(1, 0, "--env-file", "../global.env");
+        }
+
+        // Add project name to ensure unique identification of stacks
+        // This helps disambiguate stacks with the same name in different repos
+        // Convert forward slashes to double underscores for project name (e.g., "repo1/myapp" -> "repo1__myapp")
+        // Double underscore is used as a unique separator to avoid ambiguity with hyphens in stack names
+        // This is safe because stack names are validated to match [a-z0-9_-]+(?:\/[a-z0-9_-]+)*$
+        // which ensures they start with a letter/number and only contain valid Docker Compose project name characters
+        const projectName = this.name.replace(/\//g, "__");
+        options.splice(1, 0, "-p", projectName);
+
+        console.log(options);
+        return options;
+    }
+
     async start(socket: DockgeSocket) {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to start, please check the terminal output for more information.");
         }
@@ -470,7 +536,7 @@ export class Stack {
 
     async stop(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "stop" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("stop"), this.workingDir);
         if (exitCode !== 0) {
             throw new Error("Failed to stop, please check the terminal output for more information.");
         }
@@ -479,7 +545,7 @@ export class Stack {
 
     async restart(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "restart" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("restart"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to restart, please check the terminal output for more information.");
         }
@@ -488,7 +554,7 @@ export class Stack {
 
     async down(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("down"), this.workingDir);
         if (exitCode !== 0) {
             throw new Error("Failed to down, please check the terminal output for more information.");
         }
@@ -497,7 +563,7 @@ export class Stack {
 
     async update(socket: DockgeSocket) {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "pull" ], this.path);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("pull"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to pull, please check the terminal output for more information.");
         }
@@ -509,7 +575,7 @@ export class Stack {
             return exitCode;
         }
 
-        exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], this.path);
+        exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", this.getComposeOptions("up", "-d", "--remove-orphans"), this.path);
         if (exitCode !== 0) {
             throw new Error("Failed to restart, please check the terminal output for more information.");
         }
@@ -518,7 +584,7 @@ export class Stack {
 
     async joinCombinedTerminal(socket: DockgeSocket) {
         const terminalName = getCombinedTerminalName(socket.endpoint, this.name);
-        const terminal = Terminal.getOrCreateTerminal(this.server, terminalName, "docker", [ "compose", "logs", "-f", "--tail", "100" ], this.path);
+        const terminal = Terminal.getOrCreateTerminal(this.server, terminalName, "docker", this.getComposeOptions("logs", "-f", "--tail", "100"), this.path);
         terminal.enableKeepAlive = true;
         terminal.rows = COMBINED_TERMINAL_ROWS;
         terminal.cols = COMBINED_TERMINAL_COLS;
@@ -539,7 +605,7 @@ export class Stack {
         let terminal = Terminal.getTerminal(terminalName);
 
         if (!terminal) {
-            terminal = new InteractiveTerminal(this.server, terminalName, "docker", [ "compose", "exec", serviceName, shell ], this.path);
+            terminal = new InteractiveTerminal(this.server, terminalName, "docker", this.getComposeOptions("exec", serviceName, shell), this.path);
             terminal.rows = TERMINAL_ROWS;
             log.debug("joinContainerTerminal", "Terminal created");
         }
@@ -549,10 +615,10 @@ export class Stack {
     }
 
     async getServiceStatusList() {
-        let statusList = new Map<string, number>();
+        let statusList = new Map<string, { state: string, ports: string[] }>();
 
         try {
-            let res = await childProcessAsync.spawn("docker", [ "compose", "ps", "--format", "json" ], {
+            let res = await childProcessAsync.spawn("docker", this.getComposeOptions("ps", "--format", "json"), {
                 cwd: this.path,
                 encoding: "utf-8",
             });
@@ -566,10 +632,19 @@ export class Stack {
             for (let line of lines) {
                 try {
                     let obj = JSON.parse(line);
+                    let ports = (obj.Ports as string).split(/,\s*/).filter((s) => {
+                        return s.indexOf("->") >= 0;
+                    });
                     if (obj.Health === "") {
-                        statusList.set(obj.Service, obj.State);
+                        statusList.set(obj.Service, {
+                            state: obj.State,
+                            ports: ports
+                        });
                     } else {
-                        statusList.set(obj.Service, obj.Health);
+                        statusList.set(obj.Service, {
+                            state: obj.Health,
+                            ports: ports
+                        });
                     }
                 } catch (e) {
                 }
