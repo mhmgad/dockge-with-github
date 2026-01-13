@@ -76,8 +76,8 @@ Alternatively, you can build and push the base images manually first:
 
 ```bash
 # Clone the repository
-git clone https://github.com/mhmgad/dockge-with-github.git
-cd dockge-with-github
+git clone https://github.com/mhmgad/dockge-plus.git
+cd dockge-plus
 
 # Login to Docker Hub
 docker login -u mhmgad

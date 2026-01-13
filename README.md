@@ -2,9 +2,9 @@
     <img src="./frontend/public/icon.svg" width="128" alt="" />
 </div>
 
-# Dockge with GitHub Integration
+# Dockge Plus - Git Integration
 
-> **Note:** This is a fork of [louislam/dockge](https://github.com/louislam/dockge) with enhanced Git/GitHub integration and additional features for managing unmanaged Docker Compose stacks.
+> **Note:** This is a fork of [louislam/dockge](https://github.com/louislam/dockge) with enhanced sync with git and additional features for managing unmanaged Docker Compose stacks.
 
 A fancy, easy-to-use and reactive self-hosted docker compose.yaml stack-oriented manager.
 
@@ -18,7 +18,7 @@ View Video: https://youtu.be/AWAlOQeNpgU?t=48
 
 ### Enhanced Features in This Fork
 
-- 🔀 **GitHub Repository Management** - Full Git/GitHub integration for managing stacks with version control:
+- 🔀 **Git Repository Management** - Full sync with git for managing stacks with version control:
   - Check git status (branch, changed files, commits ahead/behind)
   - Add files to staging area
   - Commit staged changes with custom messages
@@ -88,7 +88,7 @@ mkdir -p /opt/stacks /opt/dockge
 cd /opt/dockge
 
 # Download the compose.yaml from this fork
-curl https://raw.githubusercontent.com/mhmgad/dockge-with-github/master/compose.yaml --output compose.yaml
+curl https://raw.githubusercontent.com/mhmgad/dockge-plus/master/compose.yaml --output compose.yaml
 
 # Start the server
 docker compose up -d
@@ -143,8 +143,8 @@ If you want to use this fork with the Git integration and unmanaged stack featur
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/mhmgad/dockge-with-github.git
-cd dockge-with-github
+git clone https://github.com/mhmgad/dockge-plus.git
+cd dockge-plus
 ```
 
 2. **Install dependencies:**
@@ -170,7 +170,7 @@ npm run dev:frontend
 ```bash
 # Note: Pre-built images are available at mhmgad/dockge-plus
 # Only build from source if you need custom modifications
-docker build -t dockge-with-github:latest -f docker/Dockerfile .
+docker build -t dockge-plus:latest -f docker/Dockerfile .
 ```
 
 6. **Run with Docker:**
@@ -180,7 +180,7 @@ mkdir -p /opt/stacks /opt/dockge
 cd /opt/dockge
 
 # Download the compose.yaml
-curl https://raw.githubusercontent.com/mhmgad/dockge-with-github/master/compose.yaml --output compose.yaml
+curl https://raw.githubusercontent.com/mhmgad/dockge-plus/master/compose.yaml --output compose.yaml
 
 # Start the server
 docker compose up -d
@@ -217,8 +217,8 @@ If you love this project, please consider giving it a ⭐.
 ## 🗣️ Community and Contribution
 
 ### For Issues Related to Enhanced Features (Git Integration, Unmanaged Stacks)
-- **Bug Reports**: [mhmgad/dockge-with-github/issues](https://github.com/mhmgad/dockge-with-github/issues)
-- **Discussions**: [mhmgad/dockge-with-github/discussions](https://github.com/mhmgad/dockge-with-github/discussions)
+- **Bug Reports**: [mhmgad/dockge-plus/issues](https://github.com/mhmgad/dockge-plus/issues)
+- **Discussions**: [mhmgad/dockge-plus/discussions](https://github.com/mhmgad/dockge-plus/discussions)
 
 ### For Core Dockge Issues
 - **Bug Reports**: [louislam/dockge/issues](https://github.com/louislam/dockge/issues)
@@ -294,10 +294,10 @@ This project is a fork of [Dockge](https://github.com/louislam/dockge) created b
 
 **Upstream Project**: [louislam/dockge](https://github.com/louislam/dockge)
 
-All core functionality and the beautiful, reactive UI are thanks to the original Dockge project. This fork adds Git/GitHub integration and enhanced support for managing unmanaged Docker Compose stacks.
+All core functionality and the beautiful, reactive UI are thanks to the original Dockge project. This fork adds sync with git and enhanced support for managing unmanaged Docker Compose stacks.
 
 If you love this project, please consider giving a ⭐ to both:
-- This fork: [mhmgad/dockge-with-github](https://github.com/mhmgad/dockge-with-github)
+- This fork: [mhmgad/dockge-plus](https://github.com/mhmgad/dockge-plus)
 - The original: [louislam/dockge](https://github.com/louislam/dockge)
 
 ## Others
