@@ -244,7 +244,7 @@ export default {
 
             for (const stack of this.sortedStackList) {
                 let repoName;
-                
+
                 // Group unmanaged stacks separately
                 if (!stack.isManagedByDockge) {
                     repoName = "Unmanaged";

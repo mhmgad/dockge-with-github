@@ -503,7 +503,7 @@ export class Stack {
     getComposeOptions(command : string, ...extraOptions : string[]) {
         //--env-file ./../global.env --env-file .env
         let options = [ "compose", command, ...extraOptions ];
-        
+
         // Only add env files for managed stacks to avoid interfering with unmanaged stack configuration
         if (this.isManagedByDockge && fs.existsSync(path.join(this.server.stacksDir, "global.env"))) {
             if (fs.existsSync(path.join(this.path, ".env"))) {
