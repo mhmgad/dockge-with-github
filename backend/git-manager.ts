@@ -398,7 +398,10 @@ export class GitManager {
             if (!tracking) {
                 // No tracking branch - try to find one from remote
                 logger.debug("git-manager", "No tracking branch configured");
-                return { incomingCommits, outgoingCommits };
+                return {
+                    incomingCommits,
+                    outgoingCommits
+                };
             }
 
             const currentBranch = status.current || "HEAD";
@@ -441,7 +444,10 @@ export class GitManager {
                 logger.debug("git-manager", `Could not get outgoing commits: ${e}`);
             }
 
-            return { incomingCommits, outgoingCommits };
+            return {
+                incomingCommits,
+                outgoingCommits
+            };
         } catch (error) {
             logger.error("git-manager", `Error getting remote diff: ${error}`);
             throw error;

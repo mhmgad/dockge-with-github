@@ -48,7 +48,7 @@ export class DockerSocketHandler extends AgentSocketHandler {
                     throw new ValidationError("Name must be a string");
                 }
                 const stack = await Stack.getStack(server, name);
-                
+
                 if (!stack.isManagedByDockge) {
                     throw new ValidationError("Cannot delete an unmanaged stack. This stack is not managed by Dockge.");
                 }
@@ -120,11 +120,11 @@ export class DockerSocketHandler extends AgentSocketHandler {
                 }
 
                 const stack = await Stack.getStack(server, stackName);
-                
+
                 if (!stack.isManagedByDockge) {
                     throw new ValidationError("Cannot start an unmanaged stack. This stack is not managed by Dockge.");
                 }
-                
+
                 await stack.start(socket);
                 callbackResult({
                     ok: true,
@@ -172,11 +172,11 @@ export class DockerSocketHandler extends AgentSocketHandler {
                 }
 
                 const stack = await Stack.getStack(server, stackName);
-                
+
                 if (!stack.isManagedByDockge) {
                     throw new ValidationError("Cannot restart an unmanaged stack. This stack is not managed by Dockge.");
                 }
-                
+
                 await stack.restart(socket);
                 callbackResult({
                     ok: true,
@@ -199,11 +199,11 @@ export class DockerSocketHandler extends AgentSocketHandler {
                 }
 
                 const stack = await Stack.getStack(server, stackName);
-                
+
                 if (!stack.isManagedByDockge) {
                     throw new ValidationError("Cannot update an unmanaged stack. This stack is not managed by Dockge.");
                 }
-                
+
                 await stack.update(socket);
                 callbackResult({
                     ok: true,
