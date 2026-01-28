@@ -145,13 +145,13 @@ jobs:
         with:
           images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable={{is_default_branch}}
+            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ is_default_branch && github.event_name != 'workflow_dispatch' }}
+            type=raw,value=${{ steps.get_version.outputs.VERSION }},enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=dev-{{sha}},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push Main image
         uses: docker/build-push-action@v5
